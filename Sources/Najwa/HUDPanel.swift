@@ -8,7 +8,7 @@ final class HUDController {
     private let waveform: WaveformView
 
     init() {
-        let size = NSSize(width: 220, height: 56)
+        let size = NSSize(width: 200, height: 30)
         panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -28,7 +28,7 @@ final class HUDController {
         blur.blendingMode = .behindWindow
         blur.state = .active
         blur.wantsLayer = true
-        blur.layer?.cornerRadius = 16
+        blur.layer?.cornerRadius = 15
         blur.layer?.masksToBounds = true
 
         waveform = WaveformView(frame: blur.bounds)
@@ -63,10 +63,10 @@ final class HUDController {
 
     private func reposition() {
         guard let screen = NSScreen.main else { return }
-        let vf = screen.visibleFrame
+        let f = screen.frame                 // full screen, so we can hug the real bottom edge
         let w = panel.frame.width
-        let x = vf.midX - w / 2
-        let y = vf.minY + 80
+        let x = f.midX - w / 2
+        let y = f.minY + 6                    // ~6px above the very bottom of the screen
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
@@ -96,8 +96,8 @@ final class WaveformView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let inset: CGFloat = 18
-        let area = bounds.insetBy(dx: inset, dy: 12)
+        let inset: CGFloat = 14
+        let area = bounds.insetBy(dx: inset, dy: 5)
         let gap: CGFloat = 3
         let barW = (area.width - gap * CGFloat(barCount - 1)) / CGFloat(barCount)
         let midY = area.midY
