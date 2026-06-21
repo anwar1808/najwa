@@ -37,6 +37,7 @@ final class HotkeyMonitor {
     private var mode: Mode = .idle
     private var keyDownTime: TimeInterval = 0
     private var pendingWork: DispatchWorkItem?
+    private var holdWatchdog: Timer?
 
     init(onBegin: @escaping () -> Void, onEnd: @escaping () -> Void) {
         self.onBegin = onBegin
@@ -49,6 +50,7 @@ final class HotkeyMonitor {
 
     func stop() {
         retryTimer?.invalidate(); retryTimer = nil
+        holdWatchdog?.invalidate(); holdWatchdog = nil
         if let tap = tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let src = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
         tap = nil; runLoopSource = nil
@@ -124,6 +126,7 @@ final class HotkeyMonitor {
         case .idle:
             keyDownTime = now()
             mode = .holding
+            startHoldWatchdog()
             onBegin()
         case .tapPending:
             pendingWork?.cancel()
@@ -141,6 +144,7 @@ final class HotkeyMonitor {
     }
 
     private func fnReleased() {
+        stopHoldWatchdog()
         switch mode {
         case .holding:
             if now() - keyDownTime > holdMin {
@@ -162,6 +166,22 @@ final class HotkeyMonitor {
         default:
             break
         }
+    }
+
+    // Safety net: if the OS ever drops the fn-release event, detect that the key
+    // is physically up and recover by ending the hold.
+    private func startHoldWatchdog() {
+        holdWatchdog?.invalidate()
+        holdWatchdog = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
+            guard let self, self.mode == .holding else { return }
+            let fnDown = CGEventSource.flagsState(.combinedSessionState).contains(.maskSecondaryFn)
+            if !fnDown { self.fnReleased() } // missed release; recover
+        }
+    }
+
+    private func stopHoldWatchdog() {
+        holdWatchdog?.invalidate()
+        holdWatchdog = nil
     }
 
     private func schedule(after: TimeInterval, _ block: @escaping () -> Void) {

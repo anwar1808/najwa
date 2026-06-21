@@ -17,6 +17,10 @@ final class DictationController {
     private var transcriber: Transcriber { whisper }
 
     private var isRecording = false
+    // Audio engine start/stop is slow; keep it OFF the main thread so the fn
+    // event tap (which delivers on the main run loop) is never blocked — a block
+    // makes macOS disable the tap and drop the key-release event.
+    private let audioQueue = DispatchQueue(label: "ai.najwa.audio")
 
     init() {
         audio.onLevel = { [weak self] level in self?.hud.update(level: level) }
@@ -35,32 +39,34 @@ final class DictationController {
                 return
             }
             self.isRecording = true
-            self.audio.start()
-            self.hud.show()
+            self.hud.show()                 // main thread, fast
             self.onStateChange?(.recording)
+            self.audioQueue.async { self.audio.start() } // slow work off main
         }
     }
 
     func endRecording() {
         guard isRecording else { return }
         isRecording = false
-        let (samples, sampleRate) = audio.stop()
-        hud.hide()
+        hud.hide()                          // main thread, fast
         onStateChange?(.working)
 
-        Task { [weak self] in
+        audioQueue.async { [weak self] in
             guard let self = self else { return }
-            defer { Task { @MainActor in self.onStateChange?(.idle) } }
-            do {
-                let raw = try await self.transcriber.transcribe(samples, sampleRate: sampleRate)
-                let polished = await self.cleaner.polish(raw)
-                guard !polished.isEmpty else { return }
-                await MainActor.run {
-                    self.injector.inject(polished)
-                    self.history.add(polished)
+            let (samples, sampleRate) = self.audio.stop() // slow work off main
+            Task {
+                defer { Task { @MainActor in self.onStateChange?(.idle) } }
+                do {
+                    let raw = try await self.transcriber.transcribe(samples, sampleRate: sampleRate)
+                    let polished = await self.cleaner.polish(raw)
+                    guard !polished.isEmpty else { return }
+                    await MainActor.run {
+                        self.injector.inject(polished)
+                        self.history.add(polished)
+                    }
+                } catch {
+                    NSLog("Najwa: transcription failed: \(error.localizedDescription)")
                 }
-            } catch {
-                NSLog("Najwa: transcription failed: \(error.localizedDescription)")
             }
         }
     }
