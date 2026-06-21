@@ -22,8 +22,16 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 # App icon, if present.
 [ -f "$ROOT/Resources/Najwa.icns" ] && cp "$ROOT/Resources/Najwa.icns" "$APP/Contents/Resources/"
 
-echo "==> ad-hoc code signing"
-codesign --force --deep --sign - "$APP"
+# Sign with a stable self-signed identity ("Najwa Dev") so the Accessibility /
+# Microphone grants survive rebuilds. Falls back to ad-hoc if it isn't present.
+SIGN_ID=$(security find-certificate -c "Najwa Dev" -Z 2>/dev/null | awk '/SHA-1/{print $3}')
+if [ -n "$SIGN_ID" ]; then
+  echo "==> code signing with stable identity: Najwa Dev ($SIGN_ID)"
+  codesign --force --deep --sign "$SIGN_ID" "$APP"
+else
+  echo "==> ad-hoc code signing (no 'Najwa Dev' identity found)"
+  codesign --force --deep --sign - "$APP"
+fi
 
 echo "==> done: $APP"
 echo "Launch with: open \"$APP\"  (then grant Accessibility + Microphone)"
