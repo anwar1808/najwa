@@ -30,14 +30,39 @@ permissions granted before real speech recognition is added.
 (WhisperKit first as the known-good baseline, then the Parakeet CoreML port).
 The app depends only on the `Transcriber` protocol, so it's a drop-in.
 
+## Dependencies (vendored locally)
+
+WhisperKit's upstream repo is large and full clones kept failing mid-transfer on
+a flaky connection, so the build uses **local sibling checkouts** as overrides
+(see `Package.swift`):
+
+- `~/Annie-Claude/whisperkit` — WhisperKit **v0.13.1** (lean: `swift-transformers`
+  only; the v1.0 `argmax-oss-swift` rename pulls in Vapor, which we avoid).
+- `~/Annie-Claude/swift-collections` — **1.6.0** (transitive dep of Jinja).
+
+To recreate them:
+
+```sh
+git clone --depth 1 --branch v0.13.1 --filter=blob:none \
+  https://github.com/argmaxinc/WhisperKit ~/Annie-Claude/whisperkit
+git clone --depth 1 --branch 1.6.0 \
+  https://github.com/apple/swift-collections.git ~/Annie-Claude/swift-collections
+```
+
+`swift-transformers`, `Jinja`, and `swift-argument-parser` resolve normally over
+the network.
+
 ## Build & run
 
 Requirements: Apple Silicon, macOS 26 (Tahoe), Xcode 26.
 
 ```sh
-scripts/make_app.sh release   # → ./Najwa.app
-open ./Najwa.app
+scripts/make_app.sh release   # → ./Najwa.app, installed to /Applications/Najwa.app
+open /Applications/Najwa.app
 ```
+
+On first launch Najwa downloads the WhisperKit `small` model (~480 MB) from
+Hugging Face — watch the menu's `model:` line; transcription is offline after.
 
 ### First-run permissions
 

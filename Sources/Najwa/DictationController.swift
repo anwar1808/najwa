@@ -6,18 +6,24 @@ final class DictationController {
     enum State { case idle, recording, working }
 
     var onStateChange: ((State) -> Void)?
+    var onModelStatus: ((String) -> Void)?
 
     private let audio = AudioCapture()
     private let hud = HUDController()
     private let cleaner = Cleanup()
     private let injector = TextInjector()
     private let history = HistoryStore()
-    private var transcriber: Transcriber = StubTranscriber() // Phase 2: real ASR
+    private let whisper = WhisperKitTranscriber(model: "small")
+    private var transcriber: Transcriber { whisper }
 
     private var isRecording = false
 
     init() {
         audio.onLevel = { [weak self] level in self?.hud.update(level: level) }
+        whisper.onStatus = { [weak self] msg in
+            DispatchQueue.main.async { self?.onModelStatus?(msg) }
+        }
+        Task { await whisper.prepare() } // download/load the model at launch
     }
 
     func beginRecording() {

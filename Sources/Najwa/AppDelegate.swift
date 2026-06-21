@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeys: HotkeyMonitor!
     private var statusMenuItem: NSMenuItem!
     private var fnStatusItem: NSMenuItem!
+    private var modelStatusItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -19,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         fnStatusItem = NSMenuItem(title: "fn: starting…", action: nil, keyEquivalent: "")
         fnStatusItem.isEnabled = false
         menu.addItem(fnStatusItem)
+        modelStatusItem = NSMenuItem(title: "model: loading…", action: nil, keyEquivalent: "")
+        modelStatusItem.isEnabled = false
+        menu.addItem(modelStatusItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Najwa", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -26,6 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller = DictationController()
         controller.onStateChange = { [weak self] state in
             DispatchQueue.main.async { self?.render(state) }
+        }
+        controller.onModelStatus = { [weak self] msg in
+            DispatchQueue.main.async { self?.modelStatusItem?.title = "model: \(msg)" }
         }
 
         hotkeys = HotkeyMonitor(
