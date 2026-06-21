@@ -33,5 +33,14 @@ else
   codesign --force --deep --sign - "$APP"
 fi
 
-echo "==> done: $APP"
-echo "Launch with: open \"$APP\"  (then grant Accessibility + Microphone)"
+# Install to /Applications so the granted permissions keep pointing at one path.
+if [ -w /Applications ] || [ -d /Applications/Najwa.app ]; then
+  echo "==> installing to /Applications/Najwa.app"
+  pkill -x Najwa 2>/dev/null || true
+  rm -rf /Applications/Najwa.app
+  cp -R "$APP" /Applications/Najwa.app
+  [ -n "${SIGN_ID:-}" ] && codesign --force --deep --sign "$SIGN_ID" /Applications/Najwa.app || true
+fi
+
+echo "==> done: $APP (installed to /Applications/Najwa.app)"
+echo "Launch with: open /Applications/Najwa.app  (then grant Accessibility + Microphone)"
