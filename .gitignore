@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+*.xcodeproj
+Najwa.app/
+DerivedData/
+.DS_Store
