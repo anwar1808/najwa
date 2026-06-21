@@ -2,12 +2,13 @@ import Foundation
 import IOKit
 import IOKit.hid
 
-/// Detects the **Right Option (⌥)** key at the IOKit HID device layer via
+/// Detects the **Right Command (⌘)** key at the IOKit HID device layer via
 /// IOHIDManager (reliable, low-level, doesn't get disabled like a CGEventTap).
-/// Right Option is used because, unlike fn/Globe, it triggers no system action —
-/// so reading it (no seize) is enough and typing is unaffected.
+/// Right Command is used because it triggers no system action and avoids the
+/// Claude desktop app's Option-based voice shortcut — so reading it (no seize)
+/// is enough and typing is unaffected.
 ///
-/// The key reports on the keyboard usage page (0x07), usage 0xE6 (Right Alt).
+/// The key reports on the keyboard usage page (0x07), usage 0xE7 (Right GUI).
 ///
 /// Emits two semantic events — begin and end — via the same hold / double-tap
 /// state machine:
@@ -60,8 +61,8 @@ final class HotkeyMonitor {
         manager = mgr
 
         if result == kIOReturnSuccess {
-            report(true, "ready (Right ⌥)")
-            NSLog("Najwa: IOHIDManager open ok (Right Option).")
+            report(true, "ready (Right ⌘)")
+            NSLog("Najwa: IOHIDManager open ok (Right Command).")
         } else {
             report(false, "off — grant Input Monitoring, then relaunch")
             NSLog("Najwa: IOHIDManager open failed (\(result)). Needs Input Monitoring.")
@@ -86,8 +87,8 @@ final class HotkeyMonitor {
         let element = IOHIDValueGetElement(value)
         let usagePage = IOHIDElementGetUsagePage(element)
         let usage = IOHIDElementGetUsage(element)
-        // Right Option: keyboard page 0x07, usage 0xE6 (Right Alt).
-        guard usagePage == 0x07, usage == 0xE6 else { return }
+        // Right Command: keyboard page 0x07, usage 0xE7 (Right GUI).
+        guard usagePage == 0x07, usage == 0xE7 else { return }
         let down = IOHIDValueGetIntegerValue(value) != 0
         if down { fnPressed() } else { fnReleased() }
     }
