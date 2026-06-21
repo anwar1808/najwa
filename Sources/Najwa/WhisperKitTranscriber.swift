@@ -18,9 +18,15 @@ final class WhisperKitTranscriber: Transcriber {
     private let decodeOptions = DecodingOptions(
         task: .transcribe,
         language: "en",
+        temperatureFallbackCount: 3,
         skipSpecialTokens: true,
         withoutTimestamps: true,
         wordTimestamps: false,
+        // Hallucination guards: drop non-speech (rain, silence, fans) instead of
+        // inventing words. Standard OpenAI Whisper thresholds.
+        compressionRatioThreshold: 2.4,   // kills repetitive hallucinated loops
+        logProbThreshold: -1.0,           // drops low-confidence guesses
+        noSpeechThreshold: 0.6,           // marks non-speech segments as silent
         chunkingStrategy: .vad
     )
 
