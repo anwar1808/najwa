@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controller: DictationController!
     private var hotkeys: HotkeyMonitor!
     private var statusMenuItem: NSMenuItem!
+    private var fnStatusItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -15,8 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Hold fn to dictate · double-tap fn to lock",
-                                action: nil, keyEquivalent: ""))
+        fnStatusItem = NSMenuItem(title: "fn: starting…", action: nil, keyEquivalent: "")
+        fnStatusItem.isEnabled = false
+        menu.addItem(fnStatusItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Najwa", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -30,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onBegin: { [weak self] in self?.controller.beginRecording() },
             onEnd:   { [weak self] in self?.controller.endRecording() }
         )
+        hotkeys.onStatus = { [weak self] _, msg in
+            DispatchQueue.main.async { self?.fnStatusItem?.title = "fn: \(msg)" }
+        }
         hotkeys.start()
 
         // Surface permission state on launch so the user knows what to grant.

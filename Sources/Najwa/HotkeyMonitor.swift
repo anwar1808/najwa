@@ -4,9 +4,13 @@ import CoreGraphics
 /// Watches the `fn` (Globe) key via a CGEventTap and turns raw key transitions
 /// into two semantic events: begin-recording and end-recording.
 ///
-/// State machine (one key serves both modes). A "tap" is a quick down+up; a
-/// "double-tap" is two taps inside `tapWindow`.
+/// Robustness:
+///  - If Accessibility isn't granted yet at launch, tap creation fails; we retry
+///    on a timer, so granting it later engages `fn` WITHOUT a relaunch.
+///  - macOS disables a tap that misbehaves or after certain events; we re-enable
+///    it when we receive a tapDisabled notification, so `fn` doesn't silently die.
 ///
+/// State machine (one key serves both modes):
 ///   idle      --fn down-->            holding   (onBegin immediately)
 ///   holding   --release > holdMin-->  idle      (onEnd: hold dictation)
 ///   holding   --release <= holdMin--> tapPending
@@ -19,8 +23,12 @@ final class HotkeyMonitor {
     private let onBegin: () -> Void
     private let onEnd: () -> Void
 
+    /// (active, humanReadableStatus) — surfaced in the menu so state is visible.
+    var onStatus: ((Bool, String) -> Void)?
+
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var retryTimer: Timer?
 
     private let holdMin: TimeInterval = 0.25
     private let tapWindow: TimeInterval = 0.25
@@ -36,17 +44,30 @@ final class HotkeyMonitor {
     }
 
     func start() {
+        attachTap()
+    }
+
+    func stop() {
+        retryTimer?.invalidate(); retryTimer = nil
+        if let tap = tap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let src = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
+        tap = nil; runLoopSource = nil
+    }
+
+    private func attachTap() {
+        guard tap == nil else { return }
+
         let mask = (1 << CGEventType.flagsChanged.rawValue)
-        let callback: CGEventTapCallBack = { _, _, event, refcon in
+        let callback: CGEventTapCallBack = { _, type, event, refcon in
             if let refcon = refcon {
                 Unmanaged<HotkeyMonitor>.fromOpaque(refcon)
                     .takeUnretainedValue()
-                    .handleFlags(event)
+                    .handleEvent(type, event)
             }
             return Unmanaged.passUnretained(event)
         }
 
-        guard let tap = CGEvent.tapCreate(
+        guard let newTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .listenOnly,
@@ -54,22 +75,41 @@ final class HotkeyMonitor {
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            NSLog("Najwa: failed to create fn event tap (needs Accessibility permission).")
+            let msg = AXIsProcessTrusted()
+                ? "fn unavailable — tap creation failed"
+                : "fn off — grant Accessibility (auto-engages)"
+            report(false, msg)
+            scheduleRetry()
             return
         }
-        self.tap = tap
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+
+        tap = newTap
+        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, newTap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        NSLog("Najwa: fn event tap installed.")
+        CGEvent.tapEnable(tap: newTap, enable: true)
+        retryTimer?.invalidate(); retryTimer = nil
+        NSLog("Najwa: fn event tap installed and enabled.")
+        report(true, "fn ready — hold to dictate, double-tap to lock")
     }
 
-    func stop() {
-        if let tap = tap { CGEvent.tapEnable(tap: tap, enable: false) }
-        if let src = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
+    private func scheduleRetry() {
+        guard retryTimer == nil else { return }
+        retryTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            self?.attachTap()
+        }
     }
 
-    private func handleFlags(_ event: CGEvent) {
+    private func report(_ active: Bool, _ msg: String) {
+        DispatchQueue.main.async { [weak self] in self?.onStatus?(active, msg) }
+    }
+
+    private func handleEvent(_ type: CGEventType, _ event: CGEvent) {
+        // The system can disable a tap; re-enable it so fn keeps working.
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let tap = tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            NSLog("Najwa: fn tap was disabled by system; re-enabled.")
+            return
+        }
         let fnDown = event.flags.contains(.maskSecondaryFn)
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
