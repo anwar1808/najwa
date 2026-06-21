@@ -42,10 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onStatus = { [weak self] _, msg in
             DispatchQueue.main.async { self?.fnStatusItem?.title = "fn: \(msg)" }
         }
-        hotkeys.start()
-
-        // Surface permission state on launch so the user knows what to grant.
+        // Input Monitoring for fn (IOHIDManager); Accessibility for text injection.
+        Permissions.requestInputMonitoringIfNeeded()
         Permissions.requestAccessibilityIfNeeded()
+        hotkeys.start()
     }
 
     private func render(_ state: DictationController.State) {

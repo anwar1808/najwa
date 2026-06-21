@@ -1,8 +1,17 @@
 import AppKit
 import AVFoundation
 import ApplicationServices
+import IOKit.hid
 
 enum Permissions {
+    /// Prompts for Input Monitoring, required by IOHIDManager to read the fn key.
+    static func requestInputMonitoringIfNeeded() {
+        let granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+        if !granted {
+            NSLog("Najwa: Input Monitoring not yet granted. Add Najwa under System Settings → Privacy & Security → Input Monitoring.")
+        }
+    }
+
     /// Prompts (once) for Accessibility, required for the fn event tap and text injection.
     static func requestAccessibilityIfNeeded() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
