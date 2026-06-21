@@ -38,6 +38,7 @@ final class HotkeyMonitor {
     private var keyDownTime: TimeInterval = 0
     private var pendingWork: DispatchWorkItem?
     private var holdWatchdog: Timer?
+    private var lastFnDown = false   // tracks fn edges so we consume only fn
 
     init(onBegin: @escaping () -> Void, onEnd: @escaping () -> Void) {
         self.onBegin = onBegin
@@ -61,18 +62,16 @@ final class HotkeyMonitor {
 
         let mask = (1 << CGEventType.flagsChanged.rawValue)
         let callback: CGEventTapCallBack = { _, type, event, refcon in
-            if let refcon = refcon {
-                Unmanaged<HotkeyMonitor>.fromOpaque(refcon)
-                    .takeUnretainedValue()
-                    .handleEvent(type, event)
-            }
-            return Unmanaged.passUnretained(event)
+            guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+            let monitor = Unmanaged<HotkeyMonitor>.fromOpaque(refcon).takeUnretainedValue()
+            // Returning nil consumes the event so macOS never switches input source.
+            return monitor.handleEvent(type, event) ? nil : Unmanaged.passUnretained(event)
         }
 
         guard let newTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .listenOnly,
+            options: .defaultTap,                // ACTIVE tap: lets us swallow fn
             eventsOfInterest: CGEventMask(mask),
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -105,18 +104,20 @@ final class HotkeyMonitor {
         DispatchQueue.main.async { [weak self] in self?.onStatus?(active, msg) }
     }
 
-    private func handleEvent(_ type: CGEventType, _ event: CGEvent) {
+    /// Returns true if the event should be consumed (swallowed). Runs on the main
+    /// run loop (the tap is attached there), so it touches state directly.
+    private func handleEvent(_ type: CGEventType, _ event: CGEvent) -> Bool {
         // The system can disable a tap; re-enable it so fn keeps working.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = tap { CGEvent.tapEnable(tap: tap, enable: true) }
             NSLog("Najwa: fn tap was disabled by system; re-enabled.")
-            return
+            return false
         }
         let fnDown = event.flags.contains(.maskSecondaryFn)
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            if fnDown { self.fnPressed() } else { self.fnReleased() }
-        }
+        guard fnDown != lastFnDown else { return false } // other modifier — pass through
+        lastFnDown = fnDown
+        if fnDown { fnPressed() } else { fnReleased() }
+        return true // consume fn so macOS doesn't switch input source
     }
 
     private func now() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
@@ -175,7 +176,7 @@ final class HotkeyMonitor {
         holdWatchdog = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
             guard let self, self.mode == .holding else { return }
             let fnDown = CGEventSource.flagsState(.combinedSessionState).contains(.maskSecondaryFn)
-            if !fnDown { self.fnReleased() } // missed release; recover
+            if !fnDown { self.lastFnDown = false; self.fnReleased() } // missed release; recover
         }
     }
 
