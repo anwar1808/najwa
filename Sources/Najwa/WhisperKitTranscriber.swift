@@ -23,16 +23,17 @@ final class WhisperKitTranscriber: Transcriber {
         withoutTimestamps: true,
         wordTimestamps: false,
         // Hallucination guards: drop non-speech (rain, silence, fans) instead of
-        // inventing words. Standard OpenAI Whisper thresholds.
+        // inventing words. Tightened for large-v3, which is slightly more prone to
+        // confident non-speech hallucination than the turbo tier.
         compressionRatioThreshold: 2.4,   // kills repetitive hallucinated loops
-        logProbThreshold: -1.0,           // drops low-confidence guesses
-        noSpeechThreshold: 0.6,           // marks non-speech segments as silent
+        logProbThreshold: -0.7,           // drop more low-confidence guesses
+        noSpeechThreshold: 0.45,          // flag non-speech segments more readily
         chunkingStrategy: .vad
     )
 
-    /// Default is the max-accuracy turbo model (large-v3, latest, turbo) — the
-    /// best accuracy-per-latency tier on Apple Silicon.
-    init(model: String = "openai_whisper-large-v3-v20240930_turbo") {
+    /// Single source of truth for the model. Full large-v3 (latest checkpoint) —
+    /// maximum accuracy, incl. non-English; heavier decode than the turbo tier.
+    init(model: String = "openai_whisper-large-v3-v20240930") {
         self.modelName = model
     }
 
@@ -59,10 +60,23 @@ final class WhisperKitTranscriber: Transcriber {
         let t0 = ProcessInfo.processInfo.systemUptime
         let audio = AudioResampler.to16kMono(samples, from: sampleRate)
         let results = try await kit.transcribe(audioArray: audio, decodeOptions: decodeOptions)
-        let text = results.map { $0.text }.joined(separator: " ")
+        let text = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         let dt = ProcessInfo.processInfo.systemUptime - t0
         NSLog(String(format: "Najwa: ASR %.0fms for %.1fs audio", dt * 1000, Double(audio.count) / 16_000))
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.isNonSpeechArtifact(text) ? "" : text
+    }
+
+    /// Whisper emits a small, well-known set of single-token "hallucinations" on
+    /// non-speech audio (e.g. "so", "you", "the", "thank you"). Drop the result
+    /// only when the ENTIRE output is one of these — real dictation never is.
+    private static let artifacts: Set<String> = [
+        "so", "you", "the", "thanks", "thank you", "thanks for watching",
+        "thank you for watching", "bye", "uh", "um", "okay.", "you.",
+    ]
+    private static func isNonSpeechArtifact(_ text: String) -> Bool {
+        let key = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".,!?…"))
+        return key.isEmpty || artifacts.contains(key)
     }
 }
 
