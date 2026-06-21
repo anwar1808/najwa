@@ -2,15 +2,12 @@ import Foundation
 import IOKit
 import IOKit.hid
 
-/// Detects the fn / Globe key at the IOKit **HID device** layer — the same
-/// mechanism Wispr Flow uses (IOHIDManager), which sits below the window server.
+/// Detects the **Right Option (⌥)** key at the IOKit HID device layer via
+/// IOHIDManager (reliable, low-level, doesn't get disabled like a CGEventTap).
+/// Right Option is used because, unlike fn/Globe, it triggers no system action —
+/// so reading it (no seize) is enough and typing is unaffected.
 ///
-/// The fn key on Apple laptops is reported by a separate "Top Case" HID device
-/// (usage page 0xff00, usage 0x03), distinct from the main keyboard. We match and
-/// **seize** only that device, so:
-///   - we read fn down/up directly and reliably, and
-///   - macOS never sees the fn press, so it does NOT switch input source.
-/// The main alphanumeric keyboard is never touched, so typing is unaffected.
+/// The key reports on the keyboard usage page (0x07), usage 0xE6 (Right Alt).
 ///
 /// Emits two semantic events — begin and end — via the same hold / double-tap
 /// state machine:
@@ -43,13 +40,12 @@ final class HotkeyMonitor {
     func start() {
         let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
 
-        // Match ONLY the Apple Top Case device(s) that carry the fn/Globe key.
-        // Never the main keyboard, so seizing can't break typing.
-        let matches: [[String: Any]] = [
-            [kIOHIDDeviceUsagePageKey: 0xff00, kIOHIDDeviceUsageKey: 0x0003],
-            [kIOHIDDeviceUsagePageKey: 0x00ff, kIOHIDDeviceUsageKey: 0x0003],
+        // Match the keyboard device that reports modifier keys (Right Option).
+        let match: [String: Any] = [
+            kIOHIDDeviceUsagePageKey: 0x01, // Generic Desktop
+            kIOHIDDeviceUsageKey: 0x06,     // Keyboard
         ]
-        IOHIDManagerSetDeviceMatchingMultiple(mgr, matches as CFArray)
+        IOHIDManagerSetDeviceMatching(mgr, match as CFDictionary)
 
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         let valueCallback: IOHIDValueCallback = { context, _, _, value in
@@ -59,21 +55,13 @@ final class HotkeyMonitor {
         IOHIDManagerRegisterInputValueCallback(mgr, valueCallback, ctx)
         IOHIDManagerScheduleWithRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
 
-        // Seize so the OS doesn't also act on fn (no input-source switch).
-        var result = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
-        var seized = (result == kIOReturnSuccess)
-        if !seized {
-            // Seize denied — fall back to shared read (fn still detected, but the
-            // OS may still switch input source).
-            IOHIDManagerClose(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
-            result = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
-        }
-
+        // Shared read (no seize) — Right Option needs no suppression.
+        let result = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
         manager = mgr
 
         if result == kIOReturnSuccess {
-            report(true, seized ? "ready (HID, exclusive)" : "ready (HID, shared)")
-            NSLog("Najwa: IOHIDManager open ok (seized=\(seized)).")
+            report(true, "ready (Right ⌥)")
+            NSLog("Najwa: IOHIDManager open ok (Right Option).")
         } else {
             report(false, "off — grant Input Monitoring, then relaunch")
             NSLog("Najwa: IOHIDManager open failed (\(result)). Needs Input Monitoring.")
@@ -98,8 +86,8 @@ final class HotkeyMonitor {
         let element = IOHIDValueGetElement(value)
         let usagePage = IOHIDElementGetUsagePage(element)
         let usage = IOHIDElementGetUsage(element)
-        // fn / Globe: usage 0x03 on an Apple vendor / top-case page.
-        guard usage == 0x03, usagePage == 0xff00 || usagePage == 0x00ff else { return }
+        // Right Option: keyboard page 0x07, usage 0xE6 (Right Alt).
+        guard usagePage == 0x07, usage == 0xE6 else { return }
         let down = IOHIDValueGetIntegerValue(value) != 0
         if down { fnPressed() } else { fnReleased() }
     }

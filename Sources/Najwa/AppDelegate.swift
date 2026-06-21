@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
         menu.addItem(.separator())
-        fnStatusItem = NSMenuItem(title: "fn: starting…", action: nil, keyEquivalent: "")
+        fnStatusItem = NSMenuItem(title: "key: starting…", action: nil, keyEquivalent: "")
         fnStatusItem.isEnabled = false
         menu.addItem(fnStatusItem)
         modelStatusItem = NSMenuItem(title: "model: loading…", action: nil, keyEquivalent: "")
@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onEnd:   { [weak self] in self?.controller.endRecording() }
         )
         hotkeys.onStatus = { [weak self] _, msg in
-            DispatchQueue.main.async { self?.fnStatusItem?.title = "fn: \(msg)" }
+            DispatchQueue.main.async { self?.fnStatusItem?.title = "key: \(msg)" }
         }
         // Input Monitoring for fn (IOHIDManager); Accessibility for text injection.
         Permissions.requestInputMonitoringIfNeeded()
