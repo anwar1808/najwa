@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenuItem: NSMenuItem!
     private var fnStatusItem: NSMenuItem!
     private var modelStatusItem: NSMenuItem!
+    private var latencyItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -23,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         modelStatusItem = NSMenuItem(title: "model: loading…", action: nil, keyEquivalent: "")
         modelStatusItem.isEnabled = false
         menu.addItem(modelStatusItem)
+        latencyItem = NSMenuItem(title: "last: —", action: nil, keyEquivalent: "")
+        latencyItem.isEnabled = false
+        menu.addItem(latencyItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Najwa", action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
@@ -33,6 +37,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         controller.onModelStatus = { [weak self] msg in
             DispatchQueue.main.async { self?.modelStatusItem?.title = "model: \(msg)" }
+        }
+        controller.onLatency = { [weak self] seconds in
+            DispatchQueue.main.async {
+                self?.latencyItem?.title = String(format: "last: %.0f ms", seconds * 1000)
+            }
         }
 
         hotkeys = HotkeyMonitor(

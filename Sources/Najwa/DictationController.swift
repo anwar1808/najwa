@@ -7,14 +7,14 @@ final class DictationController {
 
     var onStateChange: ((State) -> Void)?
     var onModelStatus: ((String) -> Void)?
+    var onLatency: ((Double) -> Void)?   // seconds, release → text injected
 
     private let audio = AudioCapture()
     private let hud = HUDController()
     private let cleaner = Cleanup()
     private let injector = TextInjector()
     private let history = HistoryStore()
-    private let whisper = WhisperKitTranscriber(model: "small")
-    private var transcriber: Transcriber { whisper }
+    private let whisper = WhisperKitTranscriber() // max-accuracy turbo model
 
     private var isRecording = false
     // Audio engine start/stop is slow; keep it OFF the main thread so the fn
@@ -48,6 +48,7 @@ final class DictationController {
     func endRecording() {
         guard isRecording else { return }
         isRecording = false
+        let releaseTime = ProcessInfo.processInfo.systemUptime // for latency timing
         hud.hide()                          // main thread, fast
         onStateChange?(.working)
 
@@ -57,13 +58,16 @@ final class DictationController {
             Task {
                 defer { Task { @MainActor in self.onStateChange?(.idle) } }
                 do {
-                    let raw = try await self.transcriber.transcribe(samples, sampleRate: sampleRate)
+                    let raw = try await self.whisper.transcribe(samples, sampleRate: sampleRate)
                     let polished = await self.cleaner.polish(raw)
                     guard !polished.isEmpty else { return }
                     await MainActor.run {
                         self.injector.inject(polished)
                         self.history.add(polished)
                     }
+                    let dt = ProcessInfo.processInfo.systemUptime - releaseTime
+                    NSLog(String(format: "Najwa: release→text %.0fms", dt * 1000))
+                    await MainActor.run { self.onLatency?(dt) }
                 } catch {
                     NSLog("Najwa: transcription failed: \(error.localizedDescription)")
                 }

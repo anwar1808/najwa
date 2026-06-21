@@ -17,15 +17,32 @@ final class AudioCapture {
     /// Called on the main thread with a 0…1 level for the waveform HUD.
     var onLevel: ((Float) -> Void)?
 
+    private var voiceProcessingReady = false
+
+    init() {
+        // Prewarm at launch so the first recording starts instantly. Enabling
+        // voice processing the first time is slow; doing it here keeps it off the
+        // hot path. (It may no-op until mic permission is granted, then retries.)
+        configureVoiceProcessing()
+        engine.prepare()
+    }
+
+    private func configureVoiceProcessing() {
+        guard !voiceProcessingReady else { return }
+        do {
+            try engine.inputNode.setVoiceProcessingEnabled(true) // noise suppression + AEC
+            voiceProcessingReady = true
+        } catch {
+            NSLog("Najwa: voice processing not enabled yet: \(error.localizedDescription)")
+        }
+    }
+
     func start() {
         guard !capturing else { return }
+        configureVoiceProcessing() // retry if mic permission arrived after launch
         samples.removeAll(keepingCapacity: true)
 
         let input = engine.inputNode
-        // Best-effort system voice processing (noise suppression + AEC).
-        do { try input.setVoiceProcessingEnabled(true) }
-        catch { NSLog("Najwa: voice processing unavailable: \(error.localizedDescription)") }
-
         let format = input.outputFormat(forBus: 0)
         sampleRate = format.sampleRate
 
@@ -34,7 +51,6 @@ final class AudioCapture {
         }
 
         do {
-            engine.prepare()
             try engine.start()
             capturing = true
         } catch {

@@ -12,18 +12,34 @@ final class WhisperKitTranscriber: Transcriber {
     /// Human-readable load state, surfaced in the menu.
     var onStatus: ((String) -> Void)?
 
-    init(model: String = "small") {
+    // Speed-tuned decode options: fix the language (skip detection), drop
+    // timestamps, and VAD-chunk so long (locked-mode) dictations beyond 30s
+    // still transcribe fully.
+    private let decodeOptions = DecodingOptions(
+        task: .transcribe,
+        language: "en",
+        skipSpecialTokens: true,
+        withoutTimestamps: true,
+        wordTimestamps: false,
+        chunkingStrategy: .vad
+    )
+
+    /// Default is the max-accuracy turbo model (large-v3, latest, turbo) — the
+    /// best accuracy-per-latency tier on Apple Silicon.
+    init(model: String = "openai_whisper-large-v3-v20240930_turbo") {
         self.modelName = model
     }
 
-    /// Loads (and on first run downloads) the model. Safe to call once at launch.
+    /// Loads (and on first run downloads) the model, then prewarms it so the
+    /// first real transcription isn't slow. Safe to call once at launch.
     func prepare() async {
-        onStatus?("downloading \(modelName) model…")
+        onStatus?("downloading model…")
         do {
-            let config = WhisperKitConfig(model: modelName)
+            // prewarm+load compile the CoreML model and warm the compute units.
+            let config = WhisperKitConfig(model: modelName, prewarm: true, load: true)
             kit = try await WhisperKit(config)
-            onStatus?("\(modelName) ready")
-            NSLog("Najwa: WhisperKit model '\(modelName)' loaded.")
+            onStatus?("ready")
+            NSLog("Najwa: WhisperKit model '\(modelName)' loaded + prewarmed.")
         } catch {
             onStatus?("model load failed")
             NSLog("Najwa: WhisperKit load failed: \(error.localizedDescription)")
@@ -34,9 +50,12 @@ final class WhisperKitTranscriber: Transcriber {
         guard let kit else { return "[Najwa: model still loading — try again in a moment]" }
         guard !samples.isEmpty else { return "" }
 
+        let t0 = ProcessInfo.processInfo.systemUptime
         let audio = AudioResampler.to16kMono(samples, from: sampleRate)
-        let results = try await kit.transcribe(audioArray: audio)
+        let results = try await kit.transcribe(audioArray: audio, decodeOptions: decodeOptions)
         let text = results.map { $0.text }.joined(separator: " ")
+        let dt = ProcessInfo.processInfo.systemUptime - t0
+        NSLog(String(format: "Najwa: ASR %.0fms for %.1fs audio", dt * 1000, Double(audio.count) / 16_000))
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
