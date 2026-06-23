@@ -74,7 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The nūn (ن) mark as the menu-bar glyph until vector assets are added.
     private func setStatusGlyph(recording: Bool) {
         guard let button = statusItem.button else { return }
-        let color: NSColor = .systemRed   // always red in the menu bar
+        let color: NSColor = .white   // always white in the menu bar
         let attr = NSAttributedString(
             string: "ن",
             attributes: [
