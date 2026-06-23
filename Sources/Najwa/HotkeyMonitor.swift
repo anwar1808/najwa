@@ -2,11 +2,11 @@ import Foundation
 import IOKit
 import IOKit.hid
 
-/// Detects the **Left Command (⌘)** key at the IOKit HID device layer via
-/// IOHIDManager (reliable, low-level, doesn't get disabled like a CGEventTap).
-/// Reading it (no seize) is enough and typing is unaffected.
-///
-/// The key reports on the keyboard usage page (0x07), usage 0xE3 (Left GUI).
+/// Detects the **fn / Globe** key at the IOKit HID device layer via IOHIDManager.
+/// The fn key reports on a separate Apple "Top Case" HID device (usage page
+/// 0xff00, usage 0x03), distinct from the main keyboard. We read it (no seize).
+/// To stop macOS switching input source on fn, the Globe key must be set to
+/// "Do Nothing" in System Settings (keyboard switching stays on Ctrl+Space).
 ///
 /// Emits two semantic events — begin and end — via the same hold / double-tap
 /// state machine:
@@ -39,12 +39,12 @@ final class HotkeyMonitor {
     func start() {
         let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
 
-        // Match the keyboard device that reports modifier keys (Right Option).
-        let match: [String: Any] = [
-            kIOHIDDeviceUsagePageKey: 0x01, // Generic Desktop
-            kIOHIDDeviceUsageKey: 0x06,     // Keyboard
+        // Match the Apple Top Case device(s) that carry the fn/Globe key.
+        let matches: [[String: Any]] = [
+            [kIOHIDDeviceUsagePageKey: 0xff00, kIOHIDDeviceUsageKey: 0x0003],
+            [kIOHIDDeviceUsagePageKey: 0x00ff, kIOHIDDeviceUsageKey: 0x0003],
         ]
-        IOHIDManagerSetDeviceMatching(mgr, match as CFDictionary)
+        IOHIDManagerSetDeviceMatchingMultiple(mgr, matches as CFArray)
 
         let ctx = Unmanaged.passUnretained(self).toOpaque()
         let valueCallback: IOHIDValueCallback = { context, _, _, value in
@@ -59,8 +59,8 @@ final class HotkeyMonitor {
         manager = mgr
 
         if result == kIOReturnSuccess {
-            report(true, "ready (Left ⌘)")
-            NSLog("Najwa: IOHIDManager open ok (Left Command).")
+            report(true, "ready (fn)")
+            NSLog("Najwa: IOHIDManager open ok (fn).")
         } else {
             report(false, "off — grant Input Monitoring, then relaunch")
             NSLog("Najwa: IOHIDManager open failed (\(result)). Needs Input Monitoring.")
@@ -85,8 +85,8 @@ final class HotkeyMonitor {
         let element = IOHIDValueGetElement(value)
         let usagePage = IOHIDElementGetUsagePage(element)
         let usage = IOHIDElementGetUsage(element)
-        // Left Command: keyboard page 0x07, usage 0xE3 (Left GUI).
-        guard usagePage == 0x07, usage == 0xE3 else { return }
+        // fn / Globe: usage 0x03 on an Apple vendor / top-case page.
+        guard usage == 0x03, usagePage == 0xff00 || usagePage == 0x00ff else { return }
         let down = IOHIDValueGetIntegerValue(value) != 0
         if down { fnPressed() } else { fnReleased() }
     }
