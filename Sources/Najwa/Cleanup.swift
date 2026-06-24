@@ -24,7 +24,7 @@ struct Cleanup {
                     let session = LanguageModelSession(instructions: instructions)
                     let response = try await session.respond(to: trimmed)
                     let cleaned = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return cleaned.isEmpty ? naiveTidy(trimmed) : cleaned
+                    return cleaned.isEmpty ? naiveTidy(trimmed) : normalizeSpacing(cleaned)
                 } catch {
                     NSLog("Najwa: Foundation Models cleanup failed: \(error.localizedDescription)")
                 }
@@ -35,6 +35,24 @@ struct Cleanup {
         return naiveTidy(trimmed)
     }
 
+    /// Deterministic spacing fix so sentences always read like written prose,
+    /// regardless of how the language model spaced them. Inserts a missing space
+    /// after `.` `!` `?` between sentences, and collapses doubled spaces after them.
+    /// Conservative: requires a letter before and a capital after, so it leaves
+    /// decimals (3.14), ellipses, and abbreviations like "U.S." alone.
+    private func normalizeSpacing(_ s: String) -> String {
+        var out = s
+        out = regexReplace(out, #"([A-Za-z])([.!?])([A-Z])"#, "$1$2 $3")
+        out = regexReplace(out, #"([.!?]) {2,}"#, "$1 ")
+        return out
+    }
+
+    private func regexReplace(_ s: String, _ pattern: String, _ template: String) -> String {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return s }
+        let range = NSRange(s.startIndex..<s.endIndex, in: s)
+        return re.stringByReplacingMatches(in: s, range: range, withTemplate: template)
+    }
+
     private func naiveTidy(_ s: String) -> String {
         var out = s
         if let first = out.first, first.isLowercase {
@@ -42,6 +60,6 @@ struct Cleanup {
         }
         let last = out.last
         if last != "." && last != "!" && last != "?" { out += "." }
-        return out
+        return normalizeSpacing(out)
     }
 }

@@ -51,8 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onStatus = { [weak self] _, msg in
             DispatchQueue.main.async { self?.fnStatusItem?.title = "key: \(msg)" }
         }
-        // Input Monitoring for fn (IOHIDManager); Accessibility for text injection.
-        Permissions.requestInputMonitoringIfNeeded()
+        // Accessibility powers both the fn event tap and text injection.
         Permissions.requestAccessibilityIfNeeded()
         hotkeys.start()
     }

@@ -68,9 +68,22 @@ Hugging Face — watch the menu's `model:` line; transcription is offline after.
 
 1. **Microphone** — prompted on first dictation.
 2. **Accessibility** — System Settings → Privacy & Security → Accessibility →
-   add `Najwa.app`. Needed for the `fn` event tap and text injection.
+   add `Najwa.app` and toggle it **ON**. This powers both the `fn` event tap and
+   text injection at the cursor. **Quit and reopen Najwa after granting.** If `fn`
+   silently stops working, remove Najwa from this list, re-add it, and relaunch;
+   to clear a stale grant from the terminal:
+   `tccutil reset Accessibility com.anwarabdulhaqq.najwa`.
 3. **Free the Globe key** — System Settings → Keyboard → "Press 🌐 key to" →
    **Do Nothing**, so `fn` doesn't trigger Apple's own dictation.
+
+> fn is detected with a `CGEventTap` watching the secondary-fn modifier bit, not
+> IOHIDManager — on current hardware the fn key delivers nothing through the HID
+> top-case device, so **no Input Monitoring grant is needed**.
+>
+> Always launch the copy in **`/Applications/Najwa.app`** (what `make_app.sh`
+> installs). Running a second copy from elsewhere registers a duplicate, conflicting
+> TCC entry under the same bundle id, which macOS may resolve to the wrong (denied)
+> grant after a reboot — the exact "worked yesterday, dead today" failure.
 
 Then: hold **fn** and speak (release to inject), or double-tap **fn** to lock
 hands-free (double-tap again to stop).
@@ -81,7 +94,7 @@ hands-free (double-tap again to stop).
 Sources/Najwa/
   main.swift              app entry (status-bar agent)
   AppDelegate.swift       menu bar, nūn glyph, wiring
-  HotkeyMonitor.swift     fn event tap + two-mode state machine
+  HotkeyMonitor.swift     fn via IOHIDManager + two-mode state machine
   AudioCapture.swift      in-memory capture, voice processing, gain, levels
   Transcriber.swift       ASR protocol + Phase-1 stub
   Cleanup.swift           Foundation Models transcript polish

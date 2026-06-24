@@ -1,19 +1,21 @@
 import Foundation
-import IOKit
-import IOKit.hid
+import CoreGraphics
 
-/// Detects the **fn / Globe** key at the IOKit HID device layer via IOHIDManager.
-/// The fn key reports on a separate Apple "Top Case" HID device (usage page
-/// 0xff00, usage 0x03), distinct from the main keyboard. We read it (no seize).
-/// To stop macOS switching input source on fn, the Globe key must be set to
-/// "Do Nothing" in System Settings (keyboard switching stays on Ctrl+Space).
+/// Detects the **fn / Globe** key via a `CGEventTap` on `flagsChanged`, watching
+/// the secondary-fn modifier bit (`CGEventFlags.maskSecondaryFn`, 0x800000).
 ///
-/// Emits two semantic events — begin and end — via the same hold / double-tap
-/// state machine:
-///   key down            -> begin immediately
-///   release > holdMin    -> end (hold-to-talk)
-///   quick tap            -> wait tapWindow; second tap => LOCKED, else end
-///   in LOCKED, double-tap-> end
+/// We tried the IOKit HID layer first (IOHIDManager on the Apple Top Case device,
+/// vendor usage 0xff00/0x03) — but on current hardware/macOS the fn key delivers
+/// *nothing* through that device, while a CGEventTap reports it cleanly
+/// (keycode 63, flags 0x800100 down / 0x100 up). The event tap also needs only
+/// Accessibility, not Input Monitoring. To stop macOS acting on fn itself, set the
+/// Globe key to "Do Nothing" in System Settings → Keyboard.
+///
+/// Emits two semantic events — begin and end — via a hold / double-tap state machine:
+///   key down             -> begin immediately
+///   release > holdMin     -> end (hold-to-talk)
+///   quick tap             -> wait tapWindow; second tap => LOCKED, else end
+///   in LOCKED, double-tap -> end
 final class HotkeyMonitor {
     private let onBegin: () -> Void
     private let onEnd: () -> Void
@@ -21,7 +23,13 @@ final class HotkeyMonitor {
     /// (active, humanReadableStatus) — surfaced in the menu.
     var onStatus: ((Bool, String) -> Void)?
 
-    private var manager: IOHIDManager?
+    private var tap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
+    private var accessPoll: DispatchSourceTimer?
+
+    /// Tracks the fn-bit state so we only fire on transitions (other modifiers
+    /// also produce flagsChanged events, and they carry the fn bit while fn is held).
+    private var fnIsDown = false
 
     private let holdMin: TimeInterval = 0.25
     private let tapWindow: TimeInterval = 0.25
@@ -37,58 +45,91 @@ final class HotkeyMonitor {
     }
 
     func start() {
-        let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        // A CGEventTap requires Accessibility. AXIsProcessTrusted() is the real gate;
+        // tapCreate also returns nil if it isn't granted.
+        guard Permissions.accessibilityTrusted else {
+            report(false, "off — enable Accessibility, then quit & reopen Najwa")
+            NSLog("Najwa: Accessibility not granted; fn tap cannot start.")
+            pollForAccess()
+            return
+        }
+        installTap()
+    }
 
-        // Match the Apple Top Case device(s) that carry the fn/Globe key.
-        let matches: [[String: Any]] = [
-            [kIOHIDDeviceUsagePageKey: 0xff00, kIOHIDDeviceUsageKey: 0x0003],
-            [kIOHIDDeviceUsagePageKey: 0x00ff, kIOHIDDeviceUsageKey: 0x0003],
-        ]
-        IOHIDManagerSetDeviceMatchingMultiple(mgr, matches as CFArray)
-
+    private func installTap() {
+        guard tap == nil else { return }
+        let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        let callback: CGEventTapCallBack = { _, type, event, ctx in
+            guard let ctx = ctx else { return Unmanaged.passUnretained(event) }
+            Unmanaged<HotkeyMonitor>.fromOpaque(ctx).takeUnretainedValue().handle(type: type, event: event)
+            return Unmanaged.passUnretained(event)
+        }
         let ctx = Unmanaged.passUnretained(self).toOpaque()
-        let valueCallback: IOHIDValueCallback = { context, _, _, value in
-            guard let context = context else { return }
-            Unmanaged<HotkeyMonitor>.fromOpaque(context).takeUnretainedValue().handle(value)
+        guard let t = CGEvent.tapCreate(tap: .cgSessionEventTap,
+                                        place: .headInsertEventTap,
+                                        options: .listenOnly,
+                                        eventsOfInterest: mask,
+                                        callback: callback,
+                                        userInfo: ctx) else {
+            report(false, "off — enable Accessibility, then quit & reopen Najwa")
+            NSLog("Najwa: CGEvent.tapCreate failed (Accessibility?).")
+            pollForAccess()
+            return
         }
-        IOHIDManagerRegisterInputValueCallback(mgr, valueCallback, ctx)
-        IOHIDManagerScheduleWithRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
+        let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, t, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), src, CFRunLoopMode.commonModes)
+        CGEvent.tapEnable(tap: t, enable: true)
+        tap = t
+        runLoopSource = src
+        report(true, "ready (fn)")
+        NSLog("Najwa: fn event tap armed.")
+    }
 
-        // Shared read (no seize) — Right Option needs no suppression.
-        let result = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
-        manager = mgr
-
-        if result == kIOReturnSuccess {
-            report(true, "ready (fn)")
-            NSLog("Najwa: IOHIDManager open ok (fn).")
-        } else {
-            report(false, "off — grant Input Monitoring, then relaunch")
-            NSLog("Najwa: IOHIDManager open failed (\(result)). Needs Input Monitoring.")
+    /// If the tap couldn't start (Accessibility missing), watch for the grant and
+    /// self-arm without a relaunch.
+    private func pollForAccess() {
+        accessPoll?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 1.0, repeating: 1.0)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            if Permissions.accessibilityTrusted {
+                self.accessPoll?.cancel()
+                self.accessPoll = nil
+                self.installTap()
+            }
         }
+        accessPoll = timer
+        timer.resume()
     }
 
     func stop() {
         pendingWork?.cancel()
-        if let mgr = manager {
-            IOHIDManagerUnscheduleFromRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
-            IOHIDManagerClose(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
+        accessPoll?.cancel()
+        accessPoll = nil
+        if let t = tap { CGEvent.tapEnable(tap: t, enable: false) }
+        if let src = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), src, CFRunLoopMode.commonModes)
         }
-        manager = nil
+        runLoopSource = nil
+        tap = nil
     }
 
     private func report(_ active: Bool, _ msg: String) {
         DispatchQueue.main.async { [weak self] in self?.onStatus?(active, msg) }
     }
 
-    /// Called from the HID run-loop source (main thread) for each fn value report.
-    private func handle(_ value: IOHIDValue) {
-        let element = IOHIDValueGetElement(value)
-        let usagePage = IOHIDElementGetUsagePage(element)
-        let usage = IOHIDElementGetUsage(element)
-        // fn / Globe: usage 0x03 on an Apple vendor / top-case page.
-        guard usage == 0x03, usagePage == 0xff00 || usagePage == 0x00ff else { return }
-        let down = IOHIDValueGetIntegerValue(value) != 0
-        if down { fnPressed() } else { fnReleased() }
+    /// Called from the event-tap run-loop source (main thread) for each flagsChanged.
+    private func handle(type: CGEventType, event: CGEvent) {
+        // The system can disable a tap after a timeout / heavy input; re-enable it.
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let t = tap { CGEvent.tapEnable(tap: t, enable: true) }
+            return
+        }
+        let fnDown = event.flags.contains(.maskSecondaryFn)
+        guard fnDown != fnIsDown else { return }   // only act on fn transitions
+        fnIsDown = fnDown
+        if fnDown { fnPressed() } else { fnReleased() }
     }
 
     private func now() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
