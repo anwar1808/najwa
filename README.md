@@ -8,27 +8,27 @@ no cloud, and **no audio is ever saved**.
 
 ## Status
 
-**Phase 1 — OS-integration core (built).** The full native loop compiles and
-installs as a status-bar app:
+**Phases 1 + 2 — full dictation loop (built).** The complete native loop
+compiles and installs as a status-bar app:
 
 - `fn` global hotkey with a two-mode state machine
   (hold-to-talk · double-tap to lock hands-free)
 - In-memory audio capture (`AVAudioEngine`) with system voice processing +
-  gain normalisation — nothing written to disk
+  gain normalisation (vDSP) — nothing written to disk
 - Live, voice-reactive waveform HUD (non-activating, click-through, never
   steals focus)
-- Text injection at the cursor via CGEvent Unicode synthesis
+- **On-device ASR via WhisperKit** (`openai_whisper-large-v3-v20240930`),
+  VAD-chunked so locked-mode dictations beyond 30s transcribe fully, with
+  hallucination guards for non-speech audio
 - On-device transcript cleanup via Apple **Foundation Models**
+- Text injection at the cursor via CGEvent Unicode synthesis
 - In-memory text history with a 6-hour app-uptime TTL, cleared on quit
-- Menu-bar nūn (ن) mark, red while recording
+- Menu-bar nūn (ن) mark (always white; the HUD is the recording cue)
+- Headless pipeline check: `Najwa --selftest /path/to/audio.wav`
 
-**The transcriber is a labelled stub** (`StubTranscriber`) — it injects a clear
-`[Najwa: ASR not wired yet …]` sentinel so the whole loop can be exercised and
-permissions granted before real speech recognition is added.
-
-**Phase 2 — real ASR (next).** Swap the stub for an on-device engine
-(WhisperKit first as the known-good baseline, then the Parakeet CoreML port).
-The app depends only on the `Transcriber` protocol, so it's a drop-in.
+**Phase 3 — faster ASR (later).** Try the Parakeet CoreML port as a
+lower-latency engine. The app depends only on the `Transcriber` protocol,
+so it's a drop-in.
 
 ## Dependencies (vendored locally)
 
@@ -61,7 +61,7 @@ scripts/make_app.sh release   # → ./Najwa.app, installed to /Applications/Najw
 open /Applications/Najwa.app
 ```
 
-On first launch Najwa downloads the WhisperKit `small` model (~480 MB) from
+On first launch Najwa downloads the WhisperKit `large-v3` model (~1.5 GB) from
 Hugging Face — watch the menu's `model:` line; transcription is offline after.
 
 ### First-run permissions
@@ -92,15 +92,18 @@ hands-free (double-tap again to stop).
 
 ```
 Sources/Najwa/
-  main.swift              app entry (status-bar agent)
+  main.swift              app entry (status-bar agent, --selftest dispatch)
   AppDelegate.swift       menu bar, nūn glyph, wiring
-  HotkeyMonitor.swift     fn via IOHIDManager + two-mode state machine
+  HotkeyMonitor.swift     fn via CGEventTap + two-mode state machine
   AudioCapture.swift      in-memory capture, voice processing, gain, levels
-  Transcriber.swift       ASR protocol + Phase-1 stub
+  Transcriber.swift       ASR protocol (engine is a drop-in)
+  WhisperKitTranscriber.swift  WhisperKit large-v3 ASR + 16kHz resampler
   Cleanup.swift           Foundation Models transcript polish
   TextInjector.swift      CGEvent Unicode injection at cursor
   HistoryStore.swift      in-memory 6h-TTL text history
   HUDPanel.swift          floating waveform HUD
+  Permissions.swift       Accessibility + Microphone gates
+  SelfTest.swift          headless ASR pipeline verification
   DictationController.swift  orchestration
 ```
 

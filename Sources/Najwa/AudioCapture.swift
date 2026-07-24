@@ -1,4 +1,5 @@
 import AVFoundation
+import Accelerate
 
 /// Captures microphone audio entirely in memory. Nothing is ever written to disk.
 ///
@@ -17,30 +18,36 @@ final class AudioCapture {
     /// Called on the main thread with a 0…1 level for the waveform HUD.
     var onLevel: ((Float) -> Void)?
 
-    private var voiceProcessingReady = false
+    // No work at init. Do NOT call `engine.prepare()` here: at app launch the
+    // microphone permission hasn't been requested yet (that happens on the first
+    // `beginRecording()`), so AVAudioEngine has no usable I/O node and prepare()
+    // throws `inputNode != nullptr || outputNode != nullptr`. That NSException
+    // used to abort DictationController construction, which is why the WhisperKit
+    // model load was never scheduled and the menu sat at "loading…" forever. The
+    // engine graph is built lazily in `start()`, after permission is granted.
 
-    init() {
-        // Prewarm at launch so the first recording starts instantly. Enabling
-        // voice processing the first time is slow; doing it here keeps it off the
-        // hot path. (It may no-op until mic permission is granted, then retries.)
-        configureVoiceProcessing()
-        engine.prepare()
-    }
-
-    private func configureVoiceProcessing() {
-        guard !voiceProcessingReady else { return }
+    /// Voice processing (noise suppression + AEC, the counterpart to Control
+    /// Centre's "Voice Isolation") is toggled ONLY around a live capture — see
+    /// `start()`/`stop()`. It must never be left on while idle: an active
+    /// voice-processing IO unit puts the whole system into communication mode and
+    /// **ducks all system output audio** for as long as it lives. Leaving it on
+    /// at launch quietly halved the Mac's audible volume the entire time Najwa
+    /// ran. `setVoiceProcessingEnabled` must be called with the engine stopped.
+    private func setVoiceProcessing(_ on: Bool) {
         do {
-            try engine.inputNode.setVoiceProcessingEnabled(true) // noise suppression + AEC
-            voiceProcessingReady = true
+            try engine.inputNode.setVoiceProcessingEnabled(on)
         } catch {
-            NSLog("Najwa: voice processing not enabled yet: \(error.localizedDescription)")
+            NSLog("Najwa: could not \(on ? "enable" : "disable") voice processing: \(error.localizedDescription)")
         }
     }
 
     func start() {
         guard !capturing else { return }
-        configureVoiceProcessing() // retry if mic permission arrived after launch
+        setVoiceProcessing(true) // engage isolation just for this capture
+        lock.lock()
         samples.removeAll(keepingCapacity: true)
+        samples.reserveCapacity(48_000 * 30) // ~30s @ 48kHz, avoids growth churn
+        lock.unlock()
 
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -66,6 +73,7 @@ final class AudioCapture {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         capturing = false
+        setVoiceProcessing(false) // release the system-wide output ducking while idle
 
         lock.lock()
         var out = samples
@@ -82,9 +90,8 @@ final class AudioCapture {
         let mono = ch[0]
 
         // RMS level for the HUD.
-        var sum: Float = 0
-        for i in 0..<n { sum += mono[i] * mono[i] }
-        let rms = n > 0 ? (sum / Float(n)).squareRoot() : 0
+        var rms: Float = 0
+        if n > 0 { vDSP_rmsqv(mono, 1, &rms, vDSP_Length(n)) }
         let level = min(1, rms * 6) // gentle scaling so whispers still register
         DispatchQueue.main.async { [weak self] in self?.onLevel?(level) }
 
@@ -95,13 +102,14 @@ final class AudioCapture {
 
     /// Peak-normalise toward a target so quiet/whispered input is usable.
     private func normalizeGain(_ buf: inout [Float]) {
+        guard !buf.isEmpty else { return }
         var peak: Float = 0
-        for s in buf { peak = max(peak, abs(s)) }
+        vDSP_maxmgv(buf, 1, &peak, vDSP_Length(buf.count))
         guard peak > 0.0001 else { return }
         let target: Float = 0.95
-        let gain = min(target / peak, 12) // cap gain so silence isn't blown up
+        var gain = min(target / peak, 12) // cap gain so silence isn't blown up
         if gain > 1 {
-            for i in buf.indices { buf[i] *= gain }
+            vDSP_vsmul(buf, 1, &gain, &buf, 1, vDSP_Length(buf.count))
         }
     }
 }

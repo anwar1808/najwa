@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        setStatusGlyph(recording: false)
+        setStatusGlyph()
 
         let menu = NSMenu()
         statusMenuItem = NSMenuItem(title: "Najwa — idle", action: nil, keyEquivalent: "")
@@ -58,27 +58,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func render(_ state: DictationController.State) {
         switch state {
-        case .idle:
-            setStatusGlyph(recording: false)
-            statusMenuItem.title = "Najwa — idle"
-        case .recording:
-            setStatusGlyph(recording: true)
-            statusMenuItem.title = "Najwa — listening…"
-        case .working:
-            setStatusGlyph(recording: false)
-            statusMenuItem.title = "Najwa — transcribing…"
+        case .idle:      statusMenuItem.title = "Najwa — idle"
+        case .recording: statusMenuItem.title = "Najwa — listening…"
+        case .working:   statusMenuItem.title = "Najwa — transcribing…"
         }
     }
 
     // The nūn (ن) mark as the menu-bar glyph until vector assets are added.
-    private func setStatusGlyph(recording: Bool) {
+    // Always white, in every state (commit 656ddd0); the HUD is the recording cue.
+    private func setStatusGlyph() {
         guard let button = statusItem.button else { return }
-        let color: NSColor = .white   // always white in the menu bar
         let attr = NSAttributedString(
             string: "ن",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 16, weight: .medium),
-                .foregroundColor: color
+                .foregroundColor: NSColor.white
             ]
         )
         button.attributedTitle = attr

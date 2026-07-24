@@ -9,12 +9,12 @@ final class DictationController {
     var onModelStatus: ((String) -> Void)?
     var onLatency: ((Double) -> Void)?   // seconds, release → text injected
 
-    private let audio = AudioCapture()
-    private let hud = HUDController()
-    private let cleaner = Cleanup()
-    private let injector = TextInjector()
-    private let history = HistoryStore()
-    private let whisper = WhisperKitTranscriber() // max-accuracy turbo model
+    private let audio: AudioCapture
+    private let hud: HUDController
+    private let cleaner: Cleanup
+    private let injector: TextInjector
+    private let history: HistoryStore
+    private let whisper: Transcriber
 
     private var isRecording = false
     // Audio engine start/stop is slow; keep it OFF the main thread so the fn
@@ -23,6 +23,12 @@ final class DictationController {
     private let audioQueue = DispatchQueue(label: "ai.najwa.audio")
 
     init() {
+        audio = AudioCapture()
+        hud = HUDController()
+        cleaner = Cleanup()
+        injector = TextInjector()
+        history = HistoryStore()
+        whisper = WhisperKitTranscriber()
         audio.onLevel = { [weak self] level in self?.hud.update(level: level) }
         whisper.onStatus = { [weak self] msg in
             DispatchQueue.main.async { self?.onModelStatus?(msg) }
@@ -59,7 +65,11 @@ final class DictationController {
                 defer { Task { @MainActor in self.onStateChange?(.idle) } }
                 do {
                     let raw = try await self.whisper.transcribe(samples, sampleRate: sampleRate)
-                    let polished = await self.cleaner.polish(raw)
+                    // Status sentinels ("[Najwa: …]") must reach the user verbatim;
+                    // the LLM cleaner would rewrite them as if they were dictation.
+                    let polished = raw.hasPrefix("[Najwa:")
+                        ? raw
+                        : await self.cleaner.polish(raw)
                     guard !polished.isEmpty else { return }
                     await MainActor.run {
                         self.injector.inject(polished)

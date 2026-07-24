@@ -32,21 +32,54 @@ final class WhisperKitTranscriber: Transcriber {
     )
 
     /// Single source of truth for the model. Full large-v3 (latest checkpoint) —
-    /// maximum accuracy, incl. non-English; heavier decode than the turbo tier.
+    /// maximum accuracy; heavier decode than the turbo tier. Note the decode
+    /// options above pin `language: "en"` for speed — change both together if
+    /// non-English dictation is ever needed.
     init(model: String = "openai_whisper-large-v3-v20240930") {
         self.modelName = model
     }
 
-    /// Loads (and on first run downloads) the model, then prewarms it so the
-    /// first real transcription isn't slow. Safe to call once at launch.
+    /// The bundled model lives under the app's own Application Support directory
+    /// (NOT ~/Documents — that folder is TCC-protected, so a menu-bar app is
+    /// denied read access there and the load silently fails). Application Support
+    /// is un-gated: the app can always read its own subfolder without a prompt.
+    static let modelsRoot: URL = FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Najwa/models", isDirectory: true)
+
+    /// Loads the model, then warms the pipeline so the first real transcription
+    /// isn't slow. Safe to call once at launch.
+    ///
+    /// IMPORTANT: we deliberately do NOT use WhisperKit's `prewarm: true`. Its
+    /// prewarm step does an ANE model specialisation that *deadlocks* when Najwa
+    /// runs as a menu-bar (LaunchServices) agent — the call never returns, so the
+    /// model never becomes ready. That was the real cause of "model loading keeps
+    /// failing": the app sat at "loading…" forever. Instead we load the models
+    /// (no prewarm) and warm the ANE ourselves with one short silent buffer,
+    /// which is safe in-process (verified transcribing in the menu-bar app).
     func prepare() async {
-        onStatus?("downloading model…")
+        onStatus?("loading model…")
+        let localFolder = Self.modelsRoot.appendingPathComponent(modelName, isDirectory: true)
+        let haveLocal = FileManager.default.fileExists(atPath: localFolder.path)
         do {
-            // prewarm+load compile the CoreML model and warm the compute units.
-            let config = WhisperKitConfig(model: modelName, prewarm: true, load: true)
-            kit = try await WhisperKit(config)
+            // When the model is already on disk, point WhisperKit straight at it
+            // (`modelFolder` + `download: false`): loads fully offline and never
+            // touches Hugging Face, so a flaky network at launch can't fail the
+            // load. First run only (no local copy) downloads once into the same
+            // un-gated Application Support root. Never `prewarm` — see above.
+            let config = haveLocal
+                ? WhisperKitConfig(model: modelName, modelFolder: localFolder.path,
+                                   prewarm: false, load: true, download: false)
+                : WhisperKitConfig(model: modelName, downloadBase: Self.modelsRoot,
+                                   prewarm: false, load: true, download: true)
+            let k = try await WhisperKit(config)
+            kit = k
             onStatus?("ready")
-            NSLog("Najwa: WhisperKit model '\(modelName)' loaded + prewarmed.")
+            NSLog("Najwa: WhisperKit model '\(modelName)' loaded (local=\(haveLocal)).")
+            // Warm the ANE off the hot path with a short silent buffer so the
+            // first real dictation is fast — the safe stand-in for `prewarm`.
+            _ = try? await k.transcribe(audioArray: [Float](repeating: 0, count: 16_000),
+                                        decodeOptions: decodeOptions)
         } catch {
             onStatus?("model load failed")
             NSLog("Najwa: WhisperKit load failed: \(error.localizedDescription)")
