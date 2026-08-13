@@ -17,9 +17,10 @@ final class DictationController {
     private let whisper: Transcriber
 
     private var isRecording = false
-    // Audio engine start/stop is slow; keep it OFF the main thread so the fn
-    // event tap (which delivers on the main run loop) is never blocked — a block
-    // makes macOS disable the tap and drop the key-release event.
+    // Audio engine start/stop stays OFF the main thread: even the ~0.1s raw
+    // start (post-v0.2.0, no voice processing) would block the fn event tap,
+    // which delivers on the main run loop — a blocked tap makes macOS disable
+    // it and drop the key-release event.
     private let audioQueue = DispatchQueue(label: "ai.najwa.audio")
 
     init() {

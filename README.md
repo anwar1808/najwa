@@ -13,8 +13,10 @@ compiles and installs as a status-bar app:
 
 - `fn` global hotkey with a two-mode state machine
   (hold-to-talk · double-tap to lock hands-free)
-- In-memory audio capture (`AVAudioEngine`) with system voice processing +
-  gain normalisation (vDSP) — nothing written to disk
+- In-memory audio capture (`AVAudioEngine`) with gain normalisation (vDSP) —
+  nothing written to disk. Capture starts in ~0.1s (system voice processing was
+  removed in v0.2.0: its ~1.1s spin-up ate the start of every dictation, it
+  ducked system audio while live, and its session could wedge into silence)
 - Live, voice-reactive waveform HUD (non-activating, click-through, never
   steals focus)
 - **On-device ASR via WhisperKit** (`openai_whisper-large-v3-v20240930`),
@@ -22,6 +24,8 @@ compiles and installs as a status-bar app:
   hallucination guards for non-speech audio
 - On-device transcript cleanup via Apple **Foundation Models**
 - Text injection at the cursor via CGEvent Unicode synthesis
+- A transient "Najwa heard nothing" HUD pill when a dictation transcribes to
+  empty — an empty result is never dropped silently
 - In-memory text history with a 6-hour app-uptime TTL, cleared on quit
 - Menu-bar nūn (ن) mark (always white; the HUD is the recording cue)
 - Headless pipeline check: `Najwa --selftest /path/to/audio.wav`
@@ -95,7 +99,7 @@ Sources/Najwa/
   main.swift              app entry (status-bar agent, --selftest dispatch)
   AppDelegate.swift       menu bar, nūn glyph, wiring
   HotkeyMonitor.swift     fn via CGEventTap + two-mode state machine
-  AudioCapture.swift      in-memory capture, voice processing, gain, levels
+  AudioCapture.swift      in-memory capture, gain normalisation, levels
   Transcriber.swift       ASR protocol (engine is a drop-in)
   WhisperKitTranscriber.swift  WhisperKit large-v3 ASR + 16kHz resampler
   Cleanup.swift           Foundation Models transcript polish
