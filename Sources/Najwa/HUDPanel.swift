@@ -62,6 +62,70 @@ final class HUDController {
         waveform.push(level)
     }
 
+    /// Transient text pill (same spot as the waveform) for feedback that must
+    /// never be silent — e.g. "heard nothing" when a dictation transcribes to
+    /// empty instead of quietly injecting nothing. Non-activating/click-through
+    /// like the main panel, so it can never steal focus either.
+    private var flashPanel: NSPanel?
+    func flash(_ message: String, duration: TimeInterval = 1.6) {
+        flashPanel?.orderOut(nil) // replace any previous flash immediately
+
+        let label = NSTextField(labelWithString: message)
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = NSColor.white.withAlphaComponent(0.95)
+        label.sizeToFit()
+
+        let size = NSSize(width: label.frame.width + 28, height: 28)
+        let p = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.hasShadow = true
+        p.level = .floating
+        p.ignoresMouseEvents = true
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        p.hidesOnDeactivate = false
+
+        let blur = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
+        blur.material = .hudWindow
+        blur.blendingMode = .behindWindow
+        blur.state = .active
+        blur.wantsLayer = true
+        blur.layer?.cornerRadius = 14
+        blur.layer?.masksToBounds = true
+        label.setFrameOrigin(NSPoint(x: (size.width - label.frame.width) / 2,
+                                     y: (size.height - label.frame.height) / 2))
+        blur.addSubview(label)
+        p.contentView = blur
+
+        if let screen = NSScreen.main {
+            let f = screen.frame
+            p.setFrameOrigin(NSPoint(x: f.midX - size.width / 2, y: f.minY + 6))
+        }
+
+        flashPanel = p
+        p.alphaValue = 0
+        p.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            p.animator().alphaValue = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self, weak p] in
+            guard let p, self?.flashPanel === p else { return }
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.3
+                p.animator().alphaValue = 0
+            }, completionHandler: { [weak self] in
+                p.orderOut(nil)
+                if self?.flashPanel === p { self?.flashPanel = nil }
+            })
+        }
+    }
+
     private func reposition() {
         guard let screen = NSScreen.main else { return }
         let f = screen.frame                 // full screen, so we can hug the real bottom edge

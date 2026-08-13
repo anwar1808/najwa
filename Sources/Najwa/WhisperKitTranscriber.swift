@@ -96,7 +96,12 @@ final class WhisperKitTranscriber: Transcriber {
         let text = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         let dt = ProcessInfo.processInfo.systemUptime - t0
         NSLog(String(format: "Najwa: ASR %.0fms for %.1fs audio", dt * 1000, Double(audio.count) / 16_000))
-        return Self.isNonSpeechArtifact(text) ? "" : text
+        if Self.isNonSpeechArtifact(text) {
+            // Log length only, never content: nothing dictated is written to disk.
+            NSLog("Najwa: dropped as non-speech artifact (\(text.count) chars)")
+            return ""
+        }
+        return text
     }
 
     /// Whisper emits a small, well-known set of single-token "hallucinations" on

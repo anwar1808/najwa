@@ -3,11 +3,16 @@ import Accelerate
 
 /// Captures microphone audio entirely in memory. Nothing is ever written to disk.
 ///
-/// - Voice processing (system noise suppression / AEC) is enabled on the input
-///   node, which is the programmatic counterpart to the Control-Centre
-///   "Voice Isolation" mic mode.
-/// - On stop, the in-memory float buffer is gain-normalised ("isolate, then
-///   amplify") so a genuine whisper becomes readable, then handed off and freed.
+/// Voice processing (system AEC / "Voice Isolation") is deliberately NOT used.
+/// It was originally enabled per capture, but on this hardware the voice-processing
+/// IO takes ~1.1s to spin up, which swallowed the first second of every dictation —
+/// short phrases vanished entirely and long ones lost their opening words, with no
+/// error anywhere. It also ducks all system output while live, and its session can
+/// wedge into delivering pure silence after a conflicting client (e.g. a browser
+/// call) touches the mic. Raw capture starts in ~0.1s; the gain normalisation below
+/// ("isolate, then amplify") keeps a genuine whisper readable, and Whisper itself
+/// is robust to room noise. Trade-off: no echo cancellation, so dictating over
+/// loud speaker audio may leak that audio into the transcript.
 final class AudioCapture {
     private let engine = AVAudioEngine()
     private var samples: [Float] = []
@@ -26,24 +31,8 @@ final class AudioCapture {
     // model load was never scheduled and the menu sat at "loading…" forever. The
     // engine graph is built lazily in `start()`, after permission is granted.
 
-    /// Voice processing (noise suppression + AEC, the counterpart to Control
-    /// Centre's "Voice Isolation") is toggled ONLY around a live capture — see
-    /// `start()`/`stop()`. It must never be left on while idle: an active
-    /// voice-processing IO unit puts the whole system into communication mode and
-    /// **ducks all system output audio** for as long as it lives. Leaving it on
-    /// at launch quietly halved the Mac's audible volume the entire time Najwa
-    /// ran. `setVoiceProcessingEnabled` must be called with the engine stopped.
-    private func setVoiceProcessing(_ on: Bool) {
-        do {
-            try engine.inputNode.setVoiceProcessingEnabled(on)
-        } catch {
-            NSLog("Najwa: could not \(on ? "enable" : "disable") voice processing: \(error.localizedDescription)")
-        }
-    }
-
     func start() {
         guard !capturing else { return }
-        setVoiceProcessing(true) // engage isolation just for this capture
         lock.lock()
         samples.removeAll(keepingCapacity: true)
         samples.reserveCapacity(48_000 * 30) // ~30s @ 48kHz, avoids growth churn
@@ -73,12 +62,18 @@ final class AudioCapture {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         capturing = false
-        setVoiceProcessing(false) // release the system-wide output ducking while idle
 
         lock.lock()
         var out = samples
         samples.removeAll(keepingCapacity: false) // free the audio immediately
         lock.unlock()
+
+        // Capture stats (duration + raw peak) — lengths only, never content, so
+        // a stderr-logged debug session can tell "silent mic" from "ASR dropped it".
+        var rawPeak: Float = 0
+        if !out.isEmpty { vDSP_maxmgv(out, 1, &rawPeak, vDSP_Length(out.count)) }
+        NSLog(String(format: "Najwa: captured %.1fs, raw peak %.4f",
+                     Double(out.count) / max(sampleRate, 1), rawPeak))
 
         normalizeGain(&out)
         return (out, sampleRate)

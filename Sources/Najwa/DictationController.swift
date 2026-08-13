@@ -70,7 +70,14 @@ final class DictationController {
                     let polished = raw.hasPrefix("[Najwa:")
                         ? raw
                         : await self.cleaner.polish(raw)
-                    guard !polished.isEmpty else { return }
+                    guard !polished.isEmpty else {
+                        // Never fail silently: an empty transcript looks exactly
+                        // like "the app is broken" unless we say we heard nothing.
+                        NSLog(String(format: "Najwa: empty transcription (%.1fs audio) — nothing injected",
+                                     Double(samples.count) / max(sampleRate, 1)))
+                        await MainActor.run { self.hud.flash("Najwa heard nothing") }
+                        return
+                    }
                     await MainActor.run {
                         self.injector.inject(polished)
                         self.history.add(polished)
