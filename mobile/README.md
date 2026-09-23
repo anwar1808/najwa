@@ -5,8 +5,39 @@ nothing leaves the phone. Different shape: a floating bubble you hold to dictate
 with the result copied to the clipboard for pasting into any app. It never reads
 the app in use.
 
-Status: **research and design complete, build not started** (23 Sep 2026).
+Status: **v0.1.0 benchmark build** (23 Sep 2026) — model foundation + Dictate/Models
+screens; no bubble or background service yet (that's step 2/3 below).
 The macOS app in the repo root is untouched by this stream.
+
+## Build
+
+```sh
+cd mobile
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+./gradlew :app:assembleRelease      # → app/build/outputs/apk/release/app-release.apk
+```
+
+Needs Android Studio's SDK (NDK 28.2, CMake 3.22.1) and the whisper.cpp
+checkout at `../../whisper.cpp` (`whisperCppDir` in `gradle.properties`).
+Signed with `~/.android/debug.keystore` on every build so installs upgrade in
+place. Release flow: bump `versionCode`/`versionName` in `app/build.gradle.kts`,
+rename the APK `NajwaMobile_v{version}+{code}.apk`, tag `mobile-v{version}`,
+`gh release create` with the APK.
+
+## Models: conversion notes
+
+`scripts/convert_models.sh` reproduces the Mesolitica files. Two gotchas fixed
+in `scripts/convert-h5-to-ggml-najwa.py` (a patched copy of whisper.cpp's
+converter): the checkpoints are bf16 (load as float32), and they carry one
+extra token, `<|transcribeprecise|>`, appended after the stock vocabulary.
+whisper.cpp derives every special-token id from `n_vocab`, so that single row
+shifted them all — turbo segfaulted, small leaked `<|6.0|>` timestamp tokens
+into the text. Dropping the row fixes both.
+
+Mac sanity check (whisper-cli, `-l ms`, TTS clips): turbo q5_0 gives clean
+English and clean Manglish; **small-v3 q8_0 with `ms` forced translated a
+pure-English sentence into Malay**. Small models are risky with a forced
+language; the turbo kept English as English.
 
 ## Target device
 

@@ -1,0 +1,14 @@
+.venv/
+venv/
+models-work/
+.gradle/
+build/
+*/build/
+.cxx/
+*/.cxx/
+local.properties
+.idea/
+*.iml
+.DS_Store
+*.apk
+releases/
