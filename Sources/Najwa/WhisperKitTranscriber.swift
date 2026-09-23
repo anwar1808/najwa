@@ -12,10 +12,14 @@ final class WhisperKitTranscriber: Transcriber {
     /// Human-readable load state, surfaced in the menu.
     var onStatus: ((String) -> Void)?
 
+    /// Personal vocabulary (shared with Pensieve). Supplies Whisper's prompt
+    /// and the post-decode correction pass; fully bypassed when switched off.
+    private let vocabulary = Vocabulary.shared
+
     // Speed-tuned decode options: fix the language (skip detection), drop
     // timestamps, and VAD-chunk so long (locked-mode) dictations beyond 30s
     // still transcribe fully.
-    private let decodeOptions = DecodingOptions(
+    private let baseDecodeOptions = DecodingOptions(
         task: .transcribe,
         language: "en",
         temperatureFallbackCount: 3,
@@ -30,6 +34,31 @@ final class WhisperKitTranscriber: Transcriber {
         noSpeechThreshold: 0.45,          // flag non-speech segments more readily
         chunkingStrategy: .vad
     )
+
+    /// Base options plus the vocabulary prompt, encoded with the loaded model's
+    /// tokenizer. Prompt tokens are prepended after <|startofprev|>, the same
+    /// way WhisperKit's CLI `--prompt` does it. Note WhisperKit skips its
+    /// KV-prefill cache when prompt tokens are present, so this costs a little
+    /// decode time — measured via `--selftest`, and gone when vocab is off.
+    private func decodeOptions(for kit: WhisperKit) -> DecodingOptions {
+        var opts = baseDecodeOptions
+        guard let prompt = vocabulary.promptText, let tokenizer = kit.tokenizer else { return opts }
+        let tokens = tokenizer.encode(text: " " + prompt).filter { $0 < tokenizer.specialTokens.specialTokenBegin }
+        guard !tokens.isEmpty else { return opts }
+        opts.promptTokens = tokens
+        opts.usePrefillPrompt = true
+        // With prompt tokens WhisperKit skips its prefill cache, so its "first
+        // token" check lands on the first FORCED prompt token, whose log-prob is
+        // always low → the segment ends before a word is decoded (empty text
+        // for every clip). The compression/log-prob fallbacks still apply.
+        opts.firstTokenLogProbThreshold = nil
+        // Diagnostic toggles for `--selftest` only (NAJWA_EXP=novad,ts,nothresh).
+        let exp = ProcessInfo.processInfo.environment["NAJWA_EXP"] ?? ""
+        if exp.contains("novad") { opts.chunkingStrategy = ChunkingStrategy.none }
+        if exp.contains("ts") { opts.withoutTimestamps = false }
+        if exp.contains("nothresh") { opts.compressionRatioThreshold = nil; opts.logProbThreshold = nil; opts.noSpeechThreshold = nil }
+        return opts
+    }
 
     /// Single source of truth for the model. Full large-v3 (latest checkpoint) —
     /// maximum accuracy; heavier decode than the turbo tier. Note the decode
@@ -78,8 +107,9 @@ final class WhisperKitTranscriber: Transcriber {
             NSLog("Najwa: WhisperKit model '\(modelName)' loaded (local=\(haveLocal)).")
             // Warm the ANE off the hot path with a short silent buffer so the
             // first real dictation is fast — the safe stand-in for `prewarm`.
+            vocabulary.reloadIfChanged()
             _ = try? await k.transcribe(audioArray: [Float](repeating: 0, count: 16_000),
-                                        decodeOptions: decodeOptions)
+                                        decodeOptions: decodeOptions(for: k))
         } catch {
             onStatus?("model load failed")
             NSLog("Najwa: WhisperKit load failed: \(error.localizedDescription)")
@@ -92,16 +122,21 @@ final class WhisperKitTranscriber: Transcriber {
 
         let t0 = ProcessInfo.processInfo.systemUptime
         let audio = AudioResampler.to16kMono(samples, from: sampleRate)
-        let results = try await kit.transcribe(audioArray: audio, decodeOptions: decodeOptions)
-        let text = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        vocabulary.reloadIfChanged() // a stat() call; picks up edits made in Pensieve
+        let results = try await kit.transcribe(audioArray: audio, decodeOptions: decodeOptions(for: kit))
+        let decoded = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         let dt = ProcessInfo.processInfo.systemUptime - t0
         NSLog(String(format: "Najwa: ASR %.0fms for %.1fs audio", dt * 1000, Double(audio.count) / 16_000))
-        if Self.isNonSpeechArtifact(text) {
+        if Self.isNonSpeechArtifact(decoded) {
             // Log length only, never content: nothing dictated is written to disk.
-            NSLog("Najwa: dropped as non-speech artifact (\(text.count) chars)")
+            NSLog("Najwa: dropped as non-speech artifact (\(decoded.count) chars)")
             return ""
         }
-        return text
+        if vocabulary.isPromptEcho(decoded) {
+            NSLog("Najwa: dropped as vocabulary-prompt echo (\(decoded.count) chars)")
+            return ""
+        }
+        return vocabulary.apply(to: decoded)
     }
 
     /// Whisper emits a small, well-known set of single-token "hallucinations" on

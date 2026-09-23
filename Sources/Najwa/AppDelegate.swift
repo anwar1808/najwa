@@ -8,6 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var fnStatusItem: NSMenuItem!
     private var modelStatusItem: NSMenuItem!
     private var latencyItem: NSMenuItem!
+    private var vocabStatusItem: NSMenuItem!
+    private var vocabToggleItem: NSMenuItem!
+    private var promptToggleItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -27,9 +30,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         latencyItem = NSMenuItem(title: "last: —", action: nil, keyEquivalent: "")
         latencyItem.isEnabled = false
         menu.addItem(latencyItem)
+        vocabStatusItem = NSMenuItem(title: Vocabulary.shared.status, action: nil, keyEquivalent: "")
+        vocabStatusItem.isEnabled = false
+        menu.addItem(vocabStatusItem)
+        menu.addItem(.separator())
+        // Rollback switch: off = the pre-vocabulary pipeline, no rebuild needed.
+        vocabToggleItem = NSMenuItem(title: "Vocabulary correction", action: #selector(toggleVocab), keyEquivalent: "")
+        vocabToggleItem.target = self
+        menu.addItem(vocabToggleItem)
+        // Opt-in: costs ~0.35 s per dictation at the default 12 terms (see Vocabulary).
+        promptToggleItem = NSMenuItem(title: "Bias Whisper with vocabulary (slower)", action: #selector(togglePrompt), keyEquivalent: "")
+        promptToggleItem.target = self
+        promptToggleItem.indentationLevel = 1
+        menu.addItem(promptToggleItem)
+        let reload = NSMenuItem(title: "Reload vocabulary", action: #selector(reloadVocab), keyEquivalent: "")
+        reload.target = self
+        menu.addItem(reload)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Najwa", action: #selector(quit), keyEquivalent: "q"))
+        menu.delegate = self
         statusItem.menu = menu
+        refreshVocabItems()
 
         controller = DictationController()
         controller.onStateChange = { [weak self] state in
@@ -79,7 +100,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.image = nil
     }
 
+    // MARK: - Vocabulary menu
+
+    private func refreshVocabItems() {
+        let v = Vocabulary.shared
+        vocabToggleItem?.state = v.isEnabled ? .on : .off
+        promptToggleItem?.state = v.isPromptEnabled ? .on : .off
+        promptToggleItem?.isEnabled = v.isEnabled
+        vocabStatusItem?.title = v.status
+    }
+
+    @objc private func togglePrompt() {
+        Vocabulary.shared.isPromptEnabled.toggle()
+        NSLog("Najwa: Whisper vocabulary bias \(Vocabulary.shared.isPromptEnabled ? "ON" : "OFF")")
+        refreshVocabItems()
+    }
+
+    @objc private func toggleVocab() {
+        let v = Vocabulary.shared
+        v.isEnabled.toggle()
+        if v.isEnabled { v.reloadIfChanged(force: true) }
+        NSLog("Najwa: vocabulary correction \(v.isEnabled ? "ON" : "OFF")")
+        refreshVocabItems()
+    }
+
+    @objc private func reloadVocab() {
+        Vocabulary.shared.reloadIfChanged(force: true)
+        refreshVocabItems()
+    }
+
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+extension AppDelegate: NSMenuDelegate {
+    /// Refresh the vocab line each time the menu opens, so an edit made in
+    /// Pensieve shows up without a relaunch.
+    func menuWillOpen(_ menu: NSMenu) {
+        Vocabulary.shared.reloadIfChanged()
+        refreshVocabItems()
     }
 }

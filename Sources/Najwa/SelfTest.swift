@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import WhisperKit
 
 /// Headless verification of the real ASR pipeline (model load + resample +
 /// transcribe) on an audio file, without needing the mic or a GUI. Invoked via:
@@ -12,6 +13,10 @@ enum SelfTest {
             exit(1)
         }
         print(String(format: "SELFTEST: loaded %.2fs of audio @ %.0fHz", Double(samples.count) / sr, sr))
+        // NAJWA_WKLOG=info|debug surfaces WhisperKit's own decode log (fallbacks, forced tokens).
+        if let lvl = ProcessInfo.processInfo.environment["NAJWA_WKLOG"] {
+            Logging.shared.logLevel = lvl == "debug" ? .debug : .info
+        }
 
         let sem = DispatchSemaphore(value: 0)
         let tx = WhisperKitTranscriber()
@@ -19,6 +24,7 @@ enum SelfTest {
             let t0 = ProcessInfo.processInfo.systemUptime
             await tx.prepare()
             let loadMs = (ProcessInfo.processInfo.systemUptime - t0) * 1000
+            print("SELFTEST: \(Vocabulary.shared.status)")
             do {
                 let t1 = ProcessInfo.processInfo.systemUptime
                 let text = try await tx.transcribe(samples, sampleRate: sr)
@@ -31,6 +37,17 @@ enum SelfTest {
             sem.signal()
         }
         sem.wait()
+    }
+
+    /// Runs only the vocabulary pass on a string — no model, no mic. Handy for
+    /// checking that a new rule or a sound-alike match behaves as expected.
+    static func vocabOnly(text: String) {
+        let v = Vocabulary.shared
+        v.reloadIfChanged(force: true)
+        print("VOCABTEST: \(v.status) (\(v.path))")
+        print("VOCABTEST: in  = \"\(text)\"")
+        print("VOCABTEST: out = \"\(v.apply(to: text))\"")
+        print("VOCABTEST: echo = \(v.isPromptEcho(text))")
     }
 
     private static func loadFloats(_ url: URL) -> ([Float], Double)? {

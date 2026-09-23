@@ -23,6 +23,27 @@ compiles and installs as a status-bar app:
   VAD-chunked so locked-mode dictations beyond 30s transcribe fully, with
   hallucination guards for non-speech audio
 - On-device transcript cleanup via Apple **Foundation Models**
+- **Personal vocabulary correction** (v0.3.0, `Vocabulary.swift`), shared with
+  Pensieve: reads the `global` + `najwa` scopes of
+  `~/Annie-Claude/Pensieve/Pensieve/.corrections.json` (re-read whenever the
+  file changes, so a rule added in Pensieve's dictionary panel applies to the
+  next dictation). After decoding: exact whole-word replacements
+  ("Paykel" → PayCal), then a sound-alike pass that only touches words the
+  system spell checker doesn't know (so "pensive" is left alone, "Evangelio"
+  → Evangelo). Project scopes (Umbra, Defra…) are deliberately not read —
+  their rules are only safe in context. Costs ≈0 ms.
+  - Optional **Whisper biasing** (menu: "Bias Whisper with vocabulary
+    (slower)", off by default): sends the first 12 terms as a decode prompt.
+    Measured cost on M4 Max/large-v3: +0.2 s at 5 terms, +0.35 s at 10,
+    +0.65 s at 20, +0.95 s at 60 — WhisperKit force-feeds each prompt token
+    and drops its prefill cache. Needs the vendored WhisperKit patch
+    (`v0.13.1-najwa-prompt-fix`): unpatched, a predicted EOT during the forced
+    prompt ended the segment and every prompted decode returned "".
+  - **Rollback:** menu toggle "Vocabulary correction" off = the pre-v0.3.0
+    pipeline; git tag `pre-vocab-correction`; `backups/` holds the last
+    v0.2.0 app bundle; the glossary file has a dated `.bak`.
+  - Test without audio: `Najwa --vocabtest "some text"`; A/B latency:
+    `--selftest clip.aiff [--no-vocab] [-NajwaVocabPrompt YES]`.
 - Text injection at the cursor via CGEvent Unicode synthesis
 - A transient "Najwa heard nothing" HUD pill when a dictation transcribes to
   empty — an empty result is never dropped silently
@@ -103,6 +124,7 @@ Sources/Najwa/
   Transcriber.swift       ASR protocol (engine is a drop-in)
   WhisperKitTranscriber.swift  WhisperKit large-v3 ASR + 16kHz resampler
   Cleanup.swift           Foundation Models transcript polish
+  Vocabulary.swift        shared glossary: replacements, sound-alike, Whisper prompt
   TextInjector.swift      CGEvent Unicode injection at cursor
   HistoryStore.swift      in-memory 6h-TTL text history
   HUDPanel.swift          floating waveform HUD
