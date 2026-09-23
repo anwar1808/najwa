@@ -133,6 +133,10 @@ Sources/Najwa/
   DictationController.swift  orchestration
 ```
 
+## Mobile stream
+
+The Android counterpart (floating bubble → on-device Whisper → clipboard; Malay + English) lives in [`mobile/`](mobile/README.md). Research and design done 23 Sep 2026; build not started. The macOS app is unaffected.
+
 ## Privacy
 
 Audio exists only as an in-memory buffer during the utterance and is freed right
