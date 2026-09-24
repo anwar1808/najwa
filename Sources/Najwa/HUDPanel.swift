@@ -75,12 +75,11 @@ final class HUDController {
 
     // MARK: - Working state (release → text landed)
 
-    /// The wave settles into the pulsing nūn dot. `showFill` adds a thin
-    /// progress line under the dot, fed by `setProgress` — only worth showing
-    /// for long dictations, where Whisper reports real per-window progress.
-    func beginWorking(showFill: Bool) {
+    /// The wave settles into the breathing nūn (ن) — the same glyph, font and
+    /// colour as the menu-bar icon — until the text has landed.
+    func beginWorking() {
         waveform.push(0)
-        working.start(showFill: showFill)
+        working.start()
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.18
             waveform.animator().alphaValue = 0
@@ -90,14 +89,8 @@ final class HUDController {
         })
     }
 
-    /// 0…1 fraction of the audio transcribed so far.
-    func setProgress(_ fraction: Double) {
-        working.setProgress(fraction)
-    }
-
     /// Text has landed (or nothing will): fade the pill away.
     func finish() {
-        working.setProgress(1)
         hide()
     }
 
@@ -175,15 +168,18 @@ final class HUDController {
     }
 }
 
-/// The nūn dot, breathing while Najwa transcribes and types. The dot is the
-/// brand's recording mark; the wave it replaces is the curve. With `showFill`
-/// a thin line under the dot fills left→right with real transcription progress.
+/// The nūn (ن), breathing while Najwa transcribes and types. Drawn with the
+/// exact attributes of the menu-bar glyph (system font, medium, white) so the
+/// pill and the menu bar read as one mark. Whole letter breathes: opacity
+/// 0.55…1.0 and scale 0.92…1.06, one breath ≈ 1.3 s.
 final class WorkingView: NSView {
     private var timer: Timer?
-    private var t: CGFloat = 0            // pulse phase
-    private var target: CGFloat = 0       // reported progress 0…1
-    private var shownFill: CGFloat = 0    // smoothed fill actually drawn
-    private var showFill = false
+    private var t: CGFloat = 0   // breath phase
+
+    /// Matches AppDelegate.setStatusGlyph (16 pt there; a touch larger here
+    /// because the pill is roomier than the menu bar).
+    private static let glyph = "ن"
+    private static let font = NSFont.systemFont(ofSize: 18, weight: .medium)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -191,9 +187,8 @@ final class WorkingView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func start(showFill: Bool) {
-        self.showFill = showFill
-        target = 0; shownFill = 0; t = 0
+    func start() {
+        t = 0
         timer?.invalidate()
         let tm = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(tm, forMode: .common)
@@ -203,41 +198,34 @@ final class WorkingView: NSView {
 
     func stop() {
         timer?.invalidate(); timer = nil
-        target = 0; shownFill = 0; t = 0
+        t = 0
         needsDisplay = true
     }
 
-    func setProgress(_ fraction: Double) {
-        target = CGFloat(max(0, min(1, fraction)))
-    }
-
     private func tick() {
-        t += (2 * .pi) / (30 * 1.3)               // one breath ≈ 1.3 s
+        t += (2 * .pi) / (30 * 1.3)
         if t > 2 * .pi { t -= 2 * .pi }
-        shownFill += (target - shownFill) * 0.15  // ease toward reported progress
         needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let c = CGPoint(x: bounds.midX, y: bounds.midY + (showFill ? 2 : 0))
-        // Breath: radius 3.2…4.6 pt, alpha 0.55…1.0, in step.
         let breath = (1 + sin(t - .pi / 2)) / 2          // 0…1, starts at 0
-        let r = 3.2 + 1.4 * breath
-        let a = 0.55 + 0.45 * breath
-        ctx.setFillColor(NSColor.white.withAlphaComponent(a).cgColor)
-        ctx.fillEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
-        // Soft halo so the pulse reads at a glance.
-        ctx.setFillColor(NSColor.white.withAlphaComponent(0.10 * breath).cgColor)
-        let hr = r + 4
-        ctx.fillEllipse(in: CGRect(x: c.x - hr, y: c.y - hr, width: 2 * hr, height: 2 * hr))
+        let alpha = 0.55 + 0.45 * breath
+        let scale = 0.92 + 0.14 * breath
 
-        guard showFill else { return }
-        let track = CGRect(x: bounds.minX + 40, y: bounds.minY + 6, width: bounds.width - 80, height: 2)
-        ctx.setFillColor(NSColor.white.withAlphaComponent(0.18).cgColor)
-        ctx.fill(track)
-        ctx.setFillColor(NSColor.white.withAlphaComponent(0.9).cgColor)
-        ctx.fill(CGRect(x: track.minX, y: track.minY, width: track.width * shownFill, height: track.height))
+        let str = NSAttributedString(string: Self.glyph, attributes: [
+            .font: Self.font,
+            .foregroundColor: NSColor.white.withAlphaComponent(alpha),
+        ])
+        // Centre on the glyph's ink, not its line box: Arabic glyphs sit high
+        // in the line box, so line-box centring looks visibly off in a 30 pt pill.
+        let ink = str.boundingRect(with: .zero, options: [.usesLineFragmentOrigin, .usesDeviceMetrics])
+        ctx.saveGState()
+        ctx.translateBy(x: bounds.midX, y: bounds.midY)
+        ctx.scaleBy(x: scale, y: scale)
+        str.draw(at: NSPoint(x: -ink.midX, y: -ink.midY))
+        ctx.restoreGState()
     }
 }
 

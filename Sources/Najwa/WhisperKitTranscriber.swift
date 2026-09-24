@@ -11,7 +11,6 @@ final class WhisperKitTranscriber: Transcriber {
 
     /// Human-readable load state, surfaced in the menu.
     var onStatus: ((String) -> Void)?
-    var onProgress: ((Double) -> Void)?
 
     /// Personal vocabulary (shared with Pensieve). Supplies Whisper's prompt
     /// and the post-decode correction pass; fully bypassed when switched off.
@@ -124,20 +123,7 @@ final class WhisperKitTranscriber: Transcriber {
         let t0 = ProcessInfo.processInfo.systemUptime
         let audio = AudioResampler.to16kMono(samples, from: sampleRate)
         vocabulary.reloadIfChanged() // a stat() call; picks up edits made in Pensieve
-        // WhisperKit exposes a Foundation `Progress` that advances per 30-s
-        // window (and per VAD chunk); it isn't KVO-observable from Swift, so
-        // poll it while the decode runs. Cheap (a property read every 80 ms).
-        // Delivered on a background thread — the caller hops to main. (Hopping
-        // here deadlocked `--selftest`, which parks the main thread on a semaphore.)
-        let poller = Task.detached { [weak self, kit] in
-            while !Task.isCancelled {
-                self?.onProgress?(kit.progress.fractionCompleted)
-                try? await Task.sleep(nanoseconds: 80_000_000)
-            }
-        }
-        defer { poller.cancel() }
         let results = try await kit.transcribe(audioArray: audio, decodeOptions: decodeOptions(for: kit))
-        onProgress?(1)
         let decoded = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         let dt = ProcessInfo.processInfo.systemUptime - t0
         NSLog(String(format: "Najwa: ASR %.0fms for %.1fs audio", dt * 1000, Double(audio.count) / 16_000))
