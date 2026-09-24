@@ -6,6 +6,7 @@ import AppKit
 final class HUDController {
     private let panel: NSPanel
     private let waveform: WaveformView
+    private let working: WorkingView
 
     init() {
         let size = NSSize(width: 200, height: 30)
@@ -34,12 +35,21 @@ final class HUDController {
         waveform = WaveformView(frame: blur.bounds)
         waveform.autoresizingMask = [.width, .height]
         blur.addSubview(waveform)
+        // The "working" state lives in the same pill, cross-faded over the wave,
+        // so release → transcribe → inject reads as one object changing state
+        // rather than the HUD vanishing and something else appearing.
+        working = WorkingView(frame: blur.bounds)
+        working.autoresizingMask = [.width, .height]
+        working.alphaValue = 0
+        blur.addSubview(working)
         panel.contentView = blur
     }
 
     func show() {
         reposition()
         panel.alphaValue = 0
+        working.alphaValue = 0
+        waveform.alphaValue = 1
         panel.orderFrontRegardless()
         waveform.startAnimating()
         NSAnimationContext.runAnimationGroup { ctx in
@@ -55,11 +65,40 @@ final class HUDController {
         }, completionHandler: { [weak self] in
             self?.panel.orderOut(nil)
             self?.waveform.stopAnimating()
+            self?.working.stop()
         })
     }
 
     func update(level: Float) {
         waveform.push(level)
+    }
+
+    // MARK: - Working state (release → text landed)
+
+    /// The wave settles into the pulsing nūn dot. `showFill` adds a thin
+    /// progress line under the dot, fed by `setProgress` — only worth showing
+    /// for long dictations, where Whisper reports real per-window progress.
+    func beginWorking(showFill: Bool) {
+        waveform.push(0)
+        working.start(showFill: showFill)
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.18
+            waveform.animator().alphaValue = 0
+            working.animator().alphaValue = 1
+        }, completionHandler: { [weak self] in
+            self?.waveform.stopAnimating()
+        })
+    }
+
+    /// 0…1 fraction of the audio transcribed so far.
+    func setProgress(_ fraction: Double) {
+        working.setProgress(fraction)
+    }
+
+    /// Text has landed (or nothing will): fade the pill away.
+    func finish() {
+        working.setProgress(1)
+        hide()
     }
 
     /// Transient text pill (same spot as the waveform) for feedback that must
@@ -133,6 +172,72 @@ final class HUDController {
         let x = f.midX - w / 2
         let y = f.minY + 6                    // ~6px above the very bottom of the screen
         panel.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+}
+
+/// The nūn dot, breathing while Najwa transcribes and types. The dot is the
+/// brand's recording mark; the wave it replaces is the curve. With `showFill`
+/// a thin line under the dot fills left→right with real transcription progress.
+final class WorkingView: NSView {
+    private var timer: Timer?
+    private var t: CGFloat = 0            // pulse phase
+    private var target: CGFloat = 0       // reported progress 0…1
+    private var shownFill: CGFloat = 0    // smoothed fill actually drawn
+    private var showFill = false
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func start(showFill: Bool) {
+        self.showFill = showFill
+        target = 0; shownFill = 0; t = 0
+        timer?.invalidate()
+        let tm = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(tm, forMode: .common)
+        timer = tm
+        needsDisplay = true
+    }
+
+    func stop() {
+        timer?.invalidate(); timer = nil
+        target = 0; shownFill = 0; t = 0
+        needsDisplay = true
+    }
+
+    func setProgress(_ fraction: Double) {
+        target = CGFloat(max(0, min(1, fraction)))
+    }
+
+    private func tick() {
+        t += (2 * .pi) / (30 * 1.3)               // one breath ≈ 1.3 s
+        if t > 2 * .pi { t -= 2 * .pi }
+        shownFill += (target - shownFill) * 0.15  // ease toward reported progress
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let c = CGPoint(x: bounds.midX, y: bounds.midY + (showFill ? 2 : 0))
+        // Breath: radius 3.2…4.6 pt, alpha 0.55…1.0, in step.
+        let breath = (1 + sin(t - .pi / 2)) / 2          // 0…1, starts at 0
+        let r = 3.2 + 1.4 * breath
+        let a = 0.55 + 0.45 * breath
+        ctx.setFillColor(NSColor.white.withAlphaComponent(a).cgColor)
+        ctx.fillEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
+        // Soft halo so the pulse reads at a glance.
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.10 * breath).cgColor)
+        let hr = r + 4
+        ctx.fillEllipse(in: CGRect(x: c.x - hr, y: c.y - hr, width: 2 * hr, height: 2 * hr))
+
+        guard showFill else { return }
+        let track = CGRect(x: bounds.minX + 40, y: bounds.minY + 6, width: bounds.width - 80, height: 2)
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.18).cgColor)
+        ctx.fill(track)
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.9).cgColor)
+        ctx.fill(CGRect(x: track.minX, y: track.minY, width: track.width * shownFill, height: track.height))
     }
 }
 

@@ -16,6 +16,11 @@ final class DictationController {
     private let history: HistoryStore
     private let whisper: Transcriber
 
+    /// Dictations longer than this show the progress fill under the dot.
+    /// Whisper reports progress per 30-s window, so below ~8 s there is nothing
+    /// truthful to fill.
+    private static let fillThresholdSeconds = 8.0
+
     private var isRecording = false
     // Audio engine start/stop stays OFF the main thread: even the ~0.1s raw
     // start (post-v0.2.0, no voice processing) would block the fn event tap,
@@ -33,6 +38,9 @@ final class DictationController {
         audio.onLevel = { [weak self] level in self?.hud.update(level: level) }
         whisper.onStatus = { [weak self] msg in
             DispatchQueue.main.async { self?.onModelStatus?(msg) }
+        }
+        whisper.onProgress = { [weak self] f in
+            DispatchQueue.main.async { self?.hud.setProgress(f) }
         }
         Task { await whisper.prepare() } // download/load the model at launch
     }
@@ -56,12 +64,16 @@ final class DictationController {
         guard isRecording else { return }
         isRecording = false
         let releaseTime = ProcessInfo.processInfo.systemUptime // for latency timing
-        hud.hide()                          // main thread, fast
         onStateChange?(.working)
 
         audioQueue.async { [weak self] in
             guard let self = self else { return }
             let (samples, sampleRate) = self.audio.stop() // slow work off main
+            let seconds = Double(samples.count) / max(sampleRate, 1)
+            // The pill stays up, wave → pulsing dot, until the text has landed.
+            // A progress fill is only meaningful past one Whisper window, so
+            // short dictations get the dot alone.
+            DispatchQueue.main.async { self.hud.beginWorking(showFill: seconds > Self.fillThresholdSeconds) }
             Task {
                 defer { Task { @MainActor in self.onStateChange?(.idle) } }
                 do {
@@ -74,20 +86,24 @@ final class DictationController {
                     guard !polished.isEmpty else {
                         // Never fail silently: an empty transcript looks exactly
                         // like "the app is broken" unless we say we heard nothing.
-                        NSLog(String(format: "Najwa: empty transcription (%.1fs audio) — nothing injected",
-                                     Double(samples.count) / max(sampleRate, 1)))
-                        await MainActor.run { self.hud.flash("Najwa heard nothing") }
+                        NSLog(String(format: "Najwa: empty transcription (%.1fs audio) — nothing injected", seconds))
+                        await MainActor.run { self.hud.finish(); self.hud.flash("Najwa heard nothing") }
                         return
                     }
+                    // Inject off the main thread: CGEvent posting is thread-safe
+                    // and a long paste (usleep per 20-char chunk) would otherwise
+                    // freeze the dot mid-pulse for the whole time it types.
+                    self.injector.inject(polished)
                     await MainActor.run {
-                        self.injector.inject(polished)
                         self.history.add(polished)
+                        self.hud.finish()
                     }
                     let dt = ProcessInfo.processInfo.systemUptime - releaseTime
                     NSLog(String(format: "Najwa: release→text %.0fms", dt * 1000))
                     await MainActor.run { self.onLatency?(dt) }
                 } catch {
                     NSLog("Najwa: transcription failed: \(error.localizedDescription)")
+                    await MainActor.run { self.hud.finish() }
                 }
             }
         }
