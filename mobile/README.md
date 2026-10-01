@@ -5,9 +5,22 @@ nothing leaves the phone. Different shape: a floating bubble you hold to dictate
 with the result copied to the clipboard for pasting into any app. It never reads
 the app in use.
 
-Status: **v0.1.1 benchmark build** (1 Oct 2026) — model foundation + Dictate/Models
-screens, Malaysian models downloadable; no bubble or background service yet
-(that's step 2/3 below). The macOS app in the repo root is untouched by this stream.
+Status: **v0.2.0 benchmark build** (1 Oct 2026) — model foundation + Dictate/Models
+screens, Malaysian models downloadable, Mac-style visuals (wave while holding,
+breathing ن while transcribing), Stop button, native build with dotprod; no
+bubble or background service yet (that's step 2/3 below). The macOS app in the
+repo root is untouched by this stream.
+
+Typeface: the ن in the app and the launcher icon is **Amiri** (classical Naskh,
+SIL OFL — `app/OFL-Amiri.txt`); the icon outline is extracted from the font
+with fontTools (`fontwork/`, not committed).
+
+Native build: ggml is compiled with `armv8.2-a+fp16+dotprod`. Without dotprod,
+quantised matmuls fall back to plain NEON and even base.en is slow. i8mm is
+left out on purpose (not guaranteed on the Kirin 9010). First on-phone result
+with the pre-dotprod build: stock large-v3-turbo took 72 s for 3.7 s of audio —
+the turbo's encoder is the full large model, so turbo-class is unlikely to be
+viable on this CPU regardless.
 
 ## Build
 

@@ -14,8 +14,8 @@ android {
         targetSdk = 35
         // Bump BOTH on every build; versionCode must always increase so the
         // APK installs over the previous one without wiping data.
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.2.0"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 

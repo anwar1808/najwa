@@ -21,5 +21,6 @@ internal object WhisperNative {
         logprobThold: Float,
     ): String
 
+    external fun cancel()
     external fun systemInfo(): String
 }

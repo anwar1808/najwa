@@ -15,6 +15,8 @@ interface Transcriber {
     val spec: ModelSpec
     /** 16 kHz mono float PCM in → text out ("" if nothing heard). */
     suspend fun transcribe(pcm16k: FloatArray, threads: Int): String
+    /** Stop an in-flight transcribe early (it returns ""). */
+    fun cancel()
     suspend fun release()
 }
 
@@ -27,6 +29,7 @@ class WhisperCppTranscriber private constructor(
         return ctx.transcribe(pcm16k, opts)
     }
 
+    override fun cancel() = ctx.cancel()
     override suspend fun release() = ctx.release()
 
     companion object {

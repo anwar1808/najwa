@@ -196,6 +196,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(busy = null, lastText = text, lastAsrMs = ms) }
     }
 
+    fun cancelTranscription() { active?.cancel() }
+
     /** Loads every installed model in turn (one at a time, to bound RAM) and runs the last recording through it. */
     fun benchmarkAll() = viewModelScope.launch {
         val pcm = lastPcm ?: run { pushError("record something first"); return@launch }

@@ -41,6 +41,9 @@ class WhisperContext private constructor(private var ptr: Long) {
         )
     }
 
+    /** Asks the running decode (if any) to stop at the next opportunity; it returns "" . */
+    fun cancel() = WhisperNative.cancel()
+
     suspend fun release() = withContext(scope.coroutineContext) {
         if (ptr != 0L) {
             WhisperNative.freeContext(ptr)

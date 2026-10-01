@@ -18,7 +18,12 @@ set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 if (${ANDROID_ABI} STREQUAL "arm64-v8a")
-    add_compile_options(-march=armv8.2-a+fp16)
+    # dotprod is what makes q5/q8 matmuls fast on ARM; without it ggml falls
+    # back to plain NEON (sysinfo showed DOTPROD absent → base.en took ~9 s for
+    # 2.5 s of audio). Every Armv8.2 big core since Cortex-A76, incl. Kirin 9010,
+    # has it. i8mm (Armv8.6) deliberately left out: not guaranteed on this SoC.
+    set(GGML_CPU_ARM_ARCH "armv8.2-a+fp16+dotprod" CACHE STRING "" FORCE)
+    add_compile_options(-march=armv8.2-a+fp16+dotprod)
 endif ()
 add_compile_options(-O3 -ffunction-sections -fdata-sections -fvisibility=hidden)
 

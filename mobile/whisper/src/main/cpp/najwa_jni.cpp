@@ -10,7 +10,11 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <atomic>
 #include "whisper.h"
+
+// Set by cancel(); read by whisper.cpp between ops so a runaway decode can be stopped.
+static std::atomic<bool> g_abort{false};
 
 #define TAG "NajwaWhisper"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -87,6 +91,9 @@ Java_ai_najwa_whisper_WhisperNative_transcribe(JNIEnv *env, jclass, jlong ctxPtr
         p.language = lang;
     }
     if (prompt && prompt[0]) p.initial_prompt = prompt;
+    g_abort.store(false);
+    p.abort_callback = [](void *) -> bool { return g_abort.load(); };
+    p.abort_callback_user_data = nullptr;
 
     std::string out;
     if (whisper_full(ctx, p, pcm.data(), n) == 0) {
@@ -116,6 +123,11 @@ Java_ai_najwa_whisper_WhisperNative_transcribe(JNIEnv *env, jclass, jlong ctxPtr
     env->ReleaseStringUTFChars(language, lang);
     if (prompt) env->ReleaseStringUTFChars(initialPrompt, prompt);
     return env->NewStringUTF(out.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_ai_najwa_whisper_WhisperNative_cancel(JNIEnv *, jclass) {
+    g_abort.store(true);
 }
 
 JNIEXPORT jstring JNICALL

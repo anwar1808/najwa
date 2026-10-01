@@ -1,18 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The nūn mark: a waveform trough (curve) with the recording dot above it,
-     echoing the macOS Najwa HUD pill. -->
+<!-- The nūn (ن) in Amiri (classical Naskh, SIL OFL — see app/OFL-Amiri.txt),
+     outline extracted with fontTools and fitted to the adaptive-icon safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M30,50 C30,72 44,80 54,80 C64,80 78,72 78,50"
-        android:strokeColor="#F4F4F5"
-        android:strokeWidth="7"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000" />
-    <path
-        android:pathData="M54,36 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0"
-        android:fillColor="#F4F4F5" />
+        android:fillColor="#F4F4F5"
+        android:pathData="M67.40 37.48Q68.91 40.40 70.23 43.85Q71.56 47.30 72.54 51.46Q73.51 55.53 73.69 59.47Q73.86 63.41 73.24 67.30Q72.54 71.55 70.59 74.56Q65.45 82.62 52.62 83.85Q43.50 84.74 38.64 80.23Q33.95 75.71 34.30 67.83Q34.74 59.78 39.70 52.96Q40.41 51.99 41.03 52.43Q41.82 52.88 40.94 54.20Q35.45 63.41 38.81 69.16Q42.09 74.83 52.18 74.83Q63.95 74.65 70.85 67.13Q71.03 66.95 71.03 66.33Q71.12 62.26 68.46 55.27Q67.14 51.81 65.99 49.29Q64.84 46.77 63.77 45.26Q63.15 44.38 63.42 43.76L66.07 37.21Q66.52 36.15 67.40 37.48ZM51.03 24.20Q51.20 23.93 51.74 24.02Q55.28 25.26 58.02 27.74Q58.37 28.09 58.11 28.45L53.95 35.17Q53.68 35.62 53.06 35.09Q52.71 34.82 51.20 33.85Q49.70 32.87 46.87 31.19Q46.43 30.93 46.69 30.66Z" />
 </vector>

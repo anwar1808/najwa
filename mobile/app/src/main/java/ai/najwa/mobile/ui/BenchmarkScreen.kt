@@ -28,6 +28,7 @@ fun BenchmarkScreen(vm: AppViewModel, ensureMic: (onGranted: () -> Unit) -> Unit
     val s by vm.state.collectAsState()
     val ctx = LocalContext.current
     val activeName = s.installed.firstOrNull { it.id == s.activeId }?.name ?: "—"
+    val transcribing = s.busy?.startsWith("transcribing") == true
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("Model", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
@@ -35,19 +36,19 @@ fun BenchmarkScreen(vm: AppViewModel, ensureMic: (onGranted: () -> Unit) -> Unit
         Text(s.activeState, color = if (s.activeState.startsWith("failed")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary)
         Spacer(Modifier.height(24.dp))
 
-        // Hold-to-talk. Press = record, release = transcribe.
+        // The pill, as on the Mac: hold → wave; release → breathing nūn until the
+        // text is in; idle → prompt. One surface changing state.
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            val ring = 0.35f + s.level.coerceIn(0f, 1f) * 0.65f
             Box(
                 Modifier
-                    .size(180.dp)
+                    .size(200.dp)
                     .background(
-                        if (s.recording) Color(0xFFF4F4F5).copy(alpha = 0.10f + 0.25f * ring) else MaterialTheme.colorScheme.surfaceVariant,
+                        if (s.recording) Color(0xFFF4F4F5).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant,
                         CircleShape,
                     )
-                    .pointerInput(s.activeState) {
+                    .pointerInput(s.activeState, s.busy) {
                         detectTapGestures(onPress = {
-                            if (s.activeState != "ready") return@detectTapGestures
+                            if (s.activeState != "ready" || s.busy != null) return@detectTapGestures
                             var started = false
                             ensureMic { vm.startRecording(); started = true }
                             tryAwaitRelease()
@@ -56,17 +57,27 @@ fun BenchmarkScreen(vm: AppViewModel, ensureMic: (onGranted: () -> Unit) -> Unit
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    if (s.recording) "listening…" else if (s.busy != null) s.busy!! else "hold to dictate",
-                    textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium,
-                )
+                when {
+                    s.recording -> WaveView(level = s.level, modifier = Modifier.size(width = 150.dp, height = 56.dp))
+                    transcribing -> BreathingNun(Modifier.fillMaxSize())
+                    s.busy != null -> Text(s.busy!!, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+                    else -> Text("hold to dictate", textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
+        if (transcribing) {
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Text(s.busy!!.removePrefix("transcribing… ").ifBlank { "0s" }, color = MaterialTheme.colorScheme.secondary, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(12.dp))
+                TextButton(onClick = { vm.cancelTranscription() }) { Text("Stop") }
             }
         }
         Spacer(Modifier.height(20.dp))
 
         if (s.lastAudioSec > 0f) {
             Text(
-                if (s.busy != null) String.format("%.1f s audio · transcribing…", s.lastAudioSec)
+                if (transcribing) String.format("%.1f s audio · transcribing…", s.lastAudioSec)
                 else String.format("%.1f s audio · %d ms", s.lastAudioSec, s.lastAsrMs),
                 color = MaterialTheme.colorScheme.secondary,
             )
