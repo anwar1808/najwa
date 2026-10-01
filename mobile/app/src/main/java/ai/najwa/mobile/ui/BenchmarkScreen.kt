@@ -65,14 +65,18 @@ fun BenchmarkScreen(vm: AppViewModel, ensureMic: (onGranted: () -> Unit) -> Unit
         Spacer(Modifier.height(20.dp))
 
         if (s.lastAudioSec > 0f) {
-            Text(String.format("%.1f s audio · %d ms", s.lastAudioSec, s.lastAsrMs), color = MaterialTheme.colorScheme.secondary)
+            Text(
+                if (s.busy != null) String.format("%.1f s audio · transcribing…", s.lastAudioSec)
+                else String.format("%.1f s audio · %d ms", s.lastAudioSec, s.lastAsrMs),
+                color = MaterialTheme.colorScheme.secondary,
+            )
             Spacer(Modifier.height(6.dp))
             Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
                 Text(if (s.lastText.isBlank()) "(heard nothing)" else s.lastText, Modifier.padding(14.dp), fontSize = 17.sp)
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(onClick = { copy(ctx, s.lastText) }, enabled = s.lastText.isNotBlank()) { Text("Copy text") }
+                OutlinedButton(onClick = { copy(ctx, s.lastText) }, enabled = s.busy == null && s.lastText.isNotBlank()) { Text("Copy text") }
                 Button(onClick = { vm.benchmarkAll() }, enabled = s.busy == null && s.installed.isNotEmpty()) {
                     Text("Run all ${s.installed.size} models on this")
                 }
@@ -99,8 +103,9 @@ fun BenchmarkScreen(vm: AppViewModel, ensureMic: (onGranted: () -> Unit) -> Unit
 
         if (s.lastAudioSec > 0f) {
             Spacer(Modifier.height(16.dp))
-            Button(onClick = { copy(ctx, vm.resultsReport()); Toast.makeText(ctx, "Results copied", Toast.LENGTH_SHORT).show() }, modifier = Modifier.fillMaxWidth()) {
-                Text("Copy results for Claude")
+            Button(onClick = { copy(ctx, vm.resultsReport()); Toast.makeText(ctx, "Results copied", Toast.LENGTH_SHORT).show() },
+                   enabled = s.busy == null, modifier = Modifier.fillMaxWidth()) {
+                Text(if (s.busy != null) "Working… (${s.busy})" else "Copy results for Claude")
             }
         }
 

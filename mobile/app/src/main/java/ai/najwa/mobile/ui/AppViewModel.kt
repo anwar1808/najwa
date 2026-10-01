@@ -164,8 +164,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!_state.value.recording) return
         val pcm = recorder.stop()
         levelJob?.cancel()
+        _state.update { it.copy(recording = false, level = 0f) }
+        // A tap (e.g. the press that triggered the permission dialog) is not a
+        // dictation. Whisper would still spend a full 30-s encoder pass on it.
+        if (pcm.size < MIN_SAMPLES) { pushError("too short (${"%.1f".format(pcm.size / 16_000f)} s) — hold while you speak"); return }
         lastPcm = pcm
-        _state.update { it.copy(recording = false, level = 0f, lastAudioSec = pcm.size / 16_000f) }
+        _state.update { it.copy(lastAudioSec = pcm.size / 16_000f) }
         transcribeLast()
     }
 
@@ -174,7 +178,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val t = active ?: run { pushError("no model loaded"); return@launch }
         _state.update { it.copy(busy = "transcribing…") }
         val t0 = System.nanoTime()
-        val text = runCatching { t.transcribe(pcm, threads) }.getOrElse { e -> pushError("transcribe: ${e.message}"); "" }
+        // Live counter so a slow model and a stuck one look different.
+        val ticker = viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(500)
+                val sec = (System.nanoTime() - t0) / 1_000_000_000
+                _state.update { it.copy(busy = "transcribing… ${sec}s") }
+            }
+        }
+        val text = runCatching { t.transcribe(pcm, threads) }.getOrElse { e ->
+            android.util.Log.e("Najwa", "transcribe failed", e)
+            pushError("transcribe: ${e::class.simpleName}: ${e.message}")
+            ""
+        }
+        ticker.cancel()
         val ms = (System.nanoTime() - t0) / 1_000_000
         _state.update { it.copy(busy = null, lastText = text, lastAsrMs = ms) }
     }
@@ -212,6 +229,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         sb.appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}, threads=${threads}")
         sb.appendLine("whisper.cpp: " + runCatching { WhisperContext.systemInfo() }.getOrDefault("?").trim())
         sb.appendLine(String.format(Locale.UK, "Audio: %.1f s", s.lastAudioSec))
+        sb.appendLine("Model state: ${s.activeState}" + (s.busy?.let { " · busy: $it" } ?: ""))
+        if (s.errors.isNotEmpty()) { sb.appendLine("Errors:"); for (e in s.errors) sb.appendLine("  - $e") }
         sb.appendLine()
         if (s.bench.isEmpty()) {
             sb.appendLine("Active model: ${s.installed.firstOrNull { it.id == s.activeId }?.name ?: "-"}")
@@ -229,6 +248,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         return sb.toString()
     }
+
+    private companion object { const val MIN_SAMPLES = 16_000 / 2 } // 0.5 s
 
     fun pushError(msg: String) { _state.update { it.copy(errors = (it.errors + msg).takeLast(5)) } }
     fun clearErrors() { _state.update { it.copy(errors = emptyList()) } }
