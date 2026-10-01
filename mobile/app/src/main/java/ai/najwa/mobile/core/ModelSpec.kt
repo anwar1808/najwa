@@ -12,8 +12,8 @@ data class ModelSpec(
     val name: String,
     val engine: String = "whisper.cpp",
     val file: String = "model.bin",
-    /** Whisper language code or "auto". Mixed Malay/English → "ms". */
-    val language: String = "ms",
+    /** Whisper language code or "auto" (default; "ms" only when you want Malay forced). */
+    val language: String = "auto",
     val sizeBytes: Long = 0,
     val source: String = "",
     val notes: String = "",
@@ -31,7 +31,7 @@ data class ModelSpec(
                 name = o.optString("name", o.getString("id")),
                 engine = o.optString("engine", "whisper.cpp"),
                 file = o.optString("file", "model.bin"),
-                language = o.optString("language", "ms"),
+                language = o.optString("language", "auto"),
                 sizeBytes = o.optLong("sizeBytes", 0),
                 source = o.optString("source", ""),
                 notes = o.optString("notes", ""),

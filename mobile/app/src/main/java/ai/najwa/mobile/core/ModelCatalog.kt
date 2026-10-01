@@ -14,7 +14,7 @@ class ModelCatalog(val entries: List<CatalogEntry>) {
                     id = o.getString("id"),
                     name = o.getString("name"),
                     url = o.getString("url"),
-                    language = o.optString("language", "ms"),
+                    language = o.optString("language", "auto"),
                     sizeMB = o.optInt("sizeMB", 0),
                     auth = when (o.optString("auth", "none")) {
                         "github" -> Auth.GITHUB

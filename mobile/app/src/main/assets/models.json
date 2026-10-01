@@ -4,25 +4,25 @@
       "id": "malaysian-large-v3-turbo-v3-q5_0",
       "name": "Malaysian Whisper large-v3-turbo v3 · q5_0",
       "url": "https://api.github.com/repos/anwar1808/najwa/releases/assets/603695582",
-      "language": "ms",
+      "language": "auto",
       "sizeMB": 574,
-      "notes": "Mesolitica fine-tune (Malay/Manglish/Mandarin/Tamil). Default candidate.",
+      "notes": "Mesolitica fine-tune (Malay/Manglish/Mandarin/Tamil). Default candidate. Expect it to be slow on this phone; flip the chip to ms for Manglish.",
       "auth": "github"
     },
     {
       "id": "malaysian-large-v3-turbo-v3-q8_0",
       "name": "Malaysian Whisper large-v3-turbo v3 · q8_0",
       "url": "https://api.github.com/repos/anwar1808/najwa/releases/assets/603695580",
-      "language": "ms",
+      "language": "auto",
       "sizeMB": 874,
-      "notes": "Same model, higher precision, ~50% larger and slower.",
+      "notes": "Same model, higher precision, ~50% larger and slower. Expect it to be slow on this phone; flip the chip to ms for Manglish.",
       "auth": "github"
     },
     {
       "id": "malaysian-small-v3-q8_0",
       "name": "Malaysian Whisper small v3 · q8_0",
       "url": "https://api.github.com/repos/anwar1808/najwa/releases/assets/603695583",
-      "language": "ms",
+      "language": "auto",
       "sizeMB": 264,
       "notes": "Lighter Mesolitica fine-tune; fallback if turbo is too slow.",
       "auth": "github"
@@ -31,16 +31,16 @@
       "id": "stock-large-v3-turbo-q5_0",
       "name": "Whisper large-v3-turbo (stock) · q5_0",
       "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
-      "language": "ms",
+      "language": "auto",
       "sizeMB": 574,
-      "notes": "Control: stock multilingual turbo with language forced to Malay (the Pensieve recipe).",
+      "notes": "Control: stock multilingual turbo. Too heavy for this phone's CPU (48 s for 3 s of speech); kept for comparison.",
       "auth": "none"
     },
     {
       "id": "stock-small-q5_1",
       "name": "Whisper small (stock, multilingual) · q5_1",
       "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
-      "language": "ms",
+      "language": "auto",
       "sizeMB": 190,
       "notes": "Control for the small tier.",
       "auth": "none"

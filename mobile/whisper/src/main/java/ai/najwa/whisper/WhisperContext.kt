@@ -7,8 +7,9 @@ import java.util.concurrent.Executors
 
 /** Decode options that matter for dictation; everything else is whisper.cpp default. */
 data class DecodeOptions(
-    /** Whisper language code ("en", "ms") or "auto". Mixed Malay/English → "ms" (see mobile/README). */
-    val language: String = "ms",
+    /** Whisper language code ("en", "ms") or "auto". Default auto: forcing "ms" on a
+     *  stock model makes it TRANSLATE English into Malay (seen on-phone 1 Oct 2026). */
+    val language: String = "auto",
     val translate: Boolean = false,
     val initialPrompt: String? = null,
     val noSpeechThreshold: Float = 0.6f,

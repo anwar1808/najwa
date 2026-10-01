@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.najwa.mobile.core.Auth
 
-private val LANGS = listOf("ms", "en", "auto")
+private val LANGS = listOf("auto", "ms", "en")
 
 @Composable
 fun ModelsScreen(vm: AppViewModel) {
@@ -28,8 +28,8 @@ fun ModelsScreen(vm: AppViewModel) {
     var ghToken by remember(s.githubToken) { mutableStateOf(s.githubToken) }
     var customUrl by remember { mutableStateOf("") }
     var customName by remember { mutableStateOf("") }
-    var customLang by remember { mutableStateOf("ms") }
-    var importLang by remember { mutableStateOf("ms") }
+    var customLang by remember { mutableStateOf("auto") }
+    var importLang by remember { mutableStateOf("auto") }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
