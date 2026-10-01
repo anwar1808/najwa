@@ -5,9 +5,9 @@ nothing leaves the phone. Different shape: a floating bubble you hold to dictate
 with the result copied to the clipboard for pasting into any app. It never reads
 the app in use.
 
-Status: **v0.1.0 benchmark build** (23 Sep 2026) — model foundation + Dictate/Models
-screens; no bubble or background service yet (that's step 2/3 below).
-The macOS app in the repo root is untouched by this stream.
+Status: **v0.1.1 benchmark build** (1 Oct 2026) — model foundation + Dictate/Models
+screens, Malaysian models downloadable; no bubble or background service yet
+(that's step 2/3 below). The macOS app in the repo root is untouched by this stream.
 
 ## Build
 
@@ -23,6 +23,18 @@ Signed with `~/.android/debug.keystore` on every build so installs upgrade in
 place. Release flow: bump `versionCode`/`versionName` in `app/build.gradle.kts`,
 rename the APK `NajwaMobile_v{version}+{code}.apk`, tag `mobile-v{version}`,
 `gh release create` with the APK.
+
+## Models: hosting
+
+The Hugging Face token on the build Mac is read-only, so the converted
+Mesolitica files are hosted as assets on this repo's release
+`mobile-models-v1` instead (private repo; upstream licence is unstated, so
+they are not published anywhere public). The app's catalogue
+(`app/src/main/assets/models.json`) points at the GitHub asset API URLs with
+`"auth": "github"`; the Models tab takes a fine-grained GitHub token
+(repository `anwar1808/najwa`, Contents: read-only) which is sent only to
+`api.github.com` — the 302 to GitHub's storage is followed without it. Stock
+ggerganov models download from Hugging Face with no token.
 
 ## Models: conversion notes
 
@@ -115,7 +127,7 @@ stays Malay, English stays English; `en`/`auto` half-translates the Malay.
 
 ## Build sequence
 
-1. **Model conversion + on-phone benchmark** — convert Mesolitica turbo-v3 and
+1. **Model conversion + on-phone benchmark** (built: v0.1.0/v0.1.1) — convert Mesolitica turbo-v3 and
    small-v3 plus stock large-v3-turbo and base.en to whisper.cpp format; a
    benchmark APK shows ms-per-sentence and transcript per model with a copy
    button. Test set: pure English with project names, pure Malay, real Manglish.

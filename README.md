@@ -18,7 +18,9 @@ compiles and installs as a status-bar app:
   removed in v0.2.0: its ~1.1s spin-up ate the start of every dictation, it
   ducked system audio while live, and its session could wedge into silence)
 - Live, voice-reactive waveform HUD (non-activating, click-through, never
-  steals focus)
+  steals focus). On release the wave settles into a **breathing ن** (same
+  glyph/font as the menu-bar mark) and the pill stays until the text has
+  landed, so a long dictation never looks stalled (v0.3.2)
 - **On-device ASR via WhisperKit** (`openai_whisper-large-v3-v20240930`),
   VAD-chunked so locked-mode dictations beyond 30s transcribe fully, with
   hallucination guards for non-speech audio
@@ -135,7 +137,7 @@ Sources/Najwa/
 
 ## Mobile stream
 
-The Android counterpart (floating bubble → on-device Whisper → clipboard; Malay + English) lives in [`mobile/`](mobile/README.md). Research and design done 23 Sep 2026; build not started. The macOS app is unaffected.
+The Android counterpart (floating bubble → on-device Whisper → clipboard; Malay + English) lives in [`mobile/`](mobile/README.md). Benchmark build v0.1.1 released 1 Oct 2026 (tags `mobile-v*`, models on release `mobile-models-v1`). The macOS app is unaffected.
 
 ## Privacy
 

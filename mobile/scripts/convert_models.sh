@@ -1,6 +1,7 @@
 #!/bin/bash
 # Reproduce the model files the app downloads: HF checkpoint → ggml f16 →
-# quantised → uploaded to the private repo anwar1808/najwa-models.
+# quantised → uploaded as assets of the GitHub release mobile-models-v1
+# (the HF token on this machine is read-only; see mobile/README.md → hosting).
 #
 # One-time setup (already done on Annie's Mac, 23 Sep 2026):
 #   python3.11 -m venv .venv && source .venv/bin/activate
@@ -38,12 +39,10 @@ convert() { # <hf repo> <short>
 convert mesolitica/Malaysian-whisper-large-v3-turbo-v3 malaysian-whisper-large-v3-turbo-v3 q5_0 q8_0
 convert mesolitica/malaysian-whisper-small-v3          malaysian-whisper-small-v3          q8_0
 
-python - <<'EOF'
-from huggingface_hub import HfApi
-api = HfApi(); repo = "anwar1808/najwa-models"
-for f in ["models-work/ggml-malaysian-whisper-large-v3-turbo-v3/malaysian-whisper-large-v3-turbo-v3-q5_0.bin",
-          "models-work/ggml-malaysian-whisper-large-v3-turbo-v3/malaysian-whisper-large-v3-turbo-v3-q8_0.bin",
-          "models-work/ggml-malaysian-whisper-small-v3/malaysian-whisper-small-v3-q8_0.bin"]:
-    api.upload_file(path_or_fileobj=f, path_in_repo=f.split("/")[-1], repo_id=repo)
-    print("uploaded", f)
-EOF
+# Publish: replace the release assets (asset ids change on --clobber; update
+# app/src/main/assets/models.json accordingly).
+gh release upload mobile-models-v1 --repo anwar1808/najwa --clobber \
+  models-work/ggml-malaysian-whisper-large-v3-turbo-v3/malaysian-whisper-large-v3-turbo-v3-q5_0.bin \
+  models-work/ggml-malaysian-whisper-large-v3-turbo-v3/malaysian-whisper-large-v3-turbo-v3-q8_0.bin \
+  models-work/ggml-malaysian-whisper-small-v3/malaysian-whisper-small-v3-q8_0.bin
+gh release view mobile-models-v1 --repo anwar1808/najwa --json assets --jq '.assets[] | "\(.name) \(.apiUrl)"'
