@@ -40,6 +40,9 @@ data class ModelSpec(
     }
 }
 
+/** Which credential a download needs. Tokens are only ever sent to their own host. */
+enum class Auth { NONE, HUGGINGFACE, GITHUB }
+
 /** A downloadable entry from the bundled catalogue (assets/models.json). */
 data class CatalogEntry(
     val id: String,
@@ -47,7 +50,7 @@ data class CatalogEntry(
     val url: String,
     val language: String,
     val sizeMB: Int,
-    val requiresToken: Boolean,
+    val auth: Auth,
     val notes: String,
 ) {
     fun toSpec(sizeBytes: Long) = ModelSpec(

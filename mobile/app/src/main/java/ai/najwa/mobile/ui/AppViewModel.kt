@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ai.najwa.mobile.NajwaApp
 import ai.najwa.mobile.audio.Recorder
+import ai.najwa.mobile.core.Auth
 import ai.najwa.mobile.core.CatalogEntry
 import ai.najwa.mobile.core.Engines
 import ai.najwa.mobile.core.ModelSpec
@@ -38,6 +39,7 @@ data class UiState(
     val downloads: Map<String, Pair<Long, Long>> = emptyMap(), // id → (done, total)
     val errors: List<String> = emptyList(),
     val hfToken: String = "",
+    val githubToken: String = "",
     val threads: Int = 0,
 )
 
@@ -59,7 +61,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val threads: Int get() = prefs.threads.takeIf { it > 0 } ?: DecodeOptions.defaultThreads()
 
     init {
-        _state.update { it.copy(hfToken = prefs.hfToken, threads = threads) }
+        _state.update { it.copy(hfToken = prefs.hfToken, githubToken = prefs.githubToken, threads = threads) }
         refreshInstalled()
         loadActive()
     }
@@ -91,6 +93,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setHfToken(token: String) { prefs.hfToken = token; _state.update { it.copy(hfToken = token) } }
+    fun setGithubToken(token: String) { prefs.githubToken = token; _state.update { it.copy(githubToken = token.trim()) } }
 
     fun setThreads(n: Int) { prefs.threads = n; _state.update { it.copy(threads = n) } }
 
@@ -99,7 +102,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         downloadJobs[entry.id] = viewModelScope.launch {
             _state.update { it.copy(downloads = it.downloads + (entry.id to (0L to -1L))) }
             runCatching {
-                store.install(entry, prefs.hfToken.ifBlank { null }) { done, total ->
+                store.install(entry, prefs.hfToken.ifBlank { null }, prefs.githubToken.ifBlank { null }) { done, total ->
                     _state.update { it.copy(downloads = it.downloads + (entry.id to (done to total))) }
                 }
             }.onFailure { e -> pushError("${entry.name}: ${e.message}") }
@@ -113,7 +116,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun downloadUrl(url: String, name: String, language: String) {
         val id = name.lowercase().replace(Regex("[^a-z0-9._-]+"), "-").trim('-').ifBlank { "custom" }
-        download(CatalogEntry(id, name, url, language, 0, url.contains("huggingface.co"), "custom URL"))
+        val auth = when {
+            url.contains("api.github.com") -> Auth.GITHUB
+            url.contains("huggingface.co") -> Auth.HUGGINGFACE
+            else -> Auth.NONE
+        }
+        download(CatalogEntry(id, name, url, language, 0, auth, "custom URL"))
     }
 
     fun importUri(uri: Uri, displayName: String, language: String) = viewModelScope.launch {

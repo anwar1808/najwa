@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.najwa.mobile.core.Auth
 
 private val LANGS = listOf("ms", "en", "auto")
 
@@ -24,6 +25,7 @@ fun ModelsScreen(vm: AppViewModel) {
     val s by vm.state.collectAsState()
     val ctx = LocalContext.current
     var token by remember(s.hfToken) { mutableStateOf(s.hfToken) }
+    var ghToken by remember(s.githubToken) { mutableStateOf(s.githubToken) }
     var customUrl by remember { mutableStateOf("") }
     var customName by remember { mutableStateOf("") }
     var customLang by remember { mutableStateOf("ms") }
@@ -58,13 +60,22 @@ fun ModelsScreen(vm: AppViewModel) {
 
         Spacer(Modifier.height(20.dp))
         Text("Available", style = MaterialTheme.typography.titleMedium)
-        Text("Private Mesolitica builds need a Hugging Face token (read access to anwar1808/najwa-models). Stock models don't.", color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp)
+        Text("The Malaysian (Mesolitica) models live in your private GitHub repo, so they need a GitHub token once. Stock models download without one.", color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp)
         Spacer(Modifier.height(6.dp))
         OutlinedTextField(
-            value = token, onValueChange = { token = it },
-            label = { Text("Hugging Face token (hf_…)") }, singleLine = true,
+            value = ghToken, onValueChange = { ghToken = it },
+            label = { Text("GitHub token (github_pat_…)") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
-            trailingIcon = { TextButton(onClick = { vm.setHfToken(token) }) { Text(if (token == s.hfToken) "saved" else "save") } },
+            trailingIcon = { TextButton(onClick = { vm.setGithubToken(ghToken) }) { Text(if (ghToken.trim() == s.githubToken && ghToken.isNotBlank()) "saved" else "save") } },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text("github.com → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only anwar1808/najwa. Permissions: Contents → Read-only. Stored only on this phone and sent only to api.github.com.", color = MaterialTheme.colorScheme.secondary, fontSize = 11.sp)
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(
+            value = token, onValueChange = { token = it },
+            label = { Text("Hugging Face token (optional)") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            trailingIcon = { TextButton(onClick = { vm.setHfToken(token) }) { Text(if (token == s.hfToken && token.isNotBlank()) "saved" else "save") } },
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
@@ -76,13 +87,17 @@ fun ModelsScreen(vm: AppViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(e.name)
-                            Text("${e.sizeMB} MB · lang ${e.language}" + if (e.requiresToken) " · token" else "", color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp)
+                            Text("${e.sizeMB} MB · lang ${e.language}" + when (e.auth) { Auth.GITHUB -> " · GitHub token"; Auth.HUGGINGFACE -> " · HF token"; Auth.NONE -> "" }, color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp)
                             if (e.notes.isNotBlank()) Text(e.notes, color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp)
                         }
                         when {
                             installed -> Text("installed", color = MaterialTheme.colorScheme.secondary)
                             dl != null -> TextButton(onClick = { vm.cancelDownload(e.id) }) { Text("cancel") }
-                            else -> Button(onClick = { vm.download(e) }, enabled = !e.requiresToken || s.hfToken.isNotBlank()) { Text("Get") }
+                            else -> Button(onClick = { vm.download(e) }, enabled = when (e.auth) {
+                                Auth.NONE -> true
+                                Auth.GITHUB -> s.githubToken.isNotBlank()
+                                Auth.HUGGINGFACE -> s.hfToken.isNotBlank()
+                            }) { Text("Get") }
                         }
                     }
                     if (dl != null) {

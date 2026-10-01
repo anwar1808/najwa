@@ -16,7 +16,11 @@ class ModelCatalog(val entries: List<CatalogEntry>) {
                     url = o.getString("url"),
                     language = o.optString("language", "ms"),
                     sizeMB = o.optInt("sizeMB", 0),
-                    requiresToken = o.optBoolean("requiresToken", false),
+                    auth = when (o.optString("auth", if (o.optBoolean("requiresToken", false)) "huggingface" else "none")) {
+                        "github" -> Auth.GITHUB
+                        "huggingface" -> Auth.HUGGINGFACE
+                        else -> Auth.NONE
+                    },
                     notes = o.optString("notes", ""),
                 )
             }

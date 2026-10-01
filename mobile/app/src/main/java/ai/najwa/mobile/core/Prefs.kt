@@ -2,7 +2,7 @@ package ai.najwa.mobile.core
 
 import android.content.Context
 
-/** App-private preferences. The HF token only ever goes to huggingface.co (see Downloader). */
+/** App-private preferences. Each token only ever goes to its own host (see Downloader). */
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("najwa", Context.MODE_PRIVATE)
 
@@ -13,6 +13,10 @@ class Prefs(context: Context) {
     var hfToken: String
         get() = sp.getString("hfToken", "") ?: ""
         set(v) = sp.edit().putString("hfToken", v.trim()).apply()
+
+    var githubToken: String
+        get() = sp.getString("githubToken", "") ?: ""
+        set(v) = sp.edit().putString("githubToken", v.trim()).apply()
 
     var threads: Int
         get() = sp.getInt("threads", 0)

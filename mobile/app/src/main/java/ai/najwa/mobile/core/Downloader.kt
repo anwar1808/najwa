@@ -10,8 +10,12 @@ import java.net.URL
 
 /**
  * Resumable HTTP download to `dest` via a `.part` file. Redirects are followed
- * by hand so the bearer token is only ever sent to huggingface.co, never to the
- * CDN host a model download redirects to.
+ * by hand so each token is only ever sent to its own host (huggingface.co /
+ * api.github.com), never to the CDN host a download redirects to.
+ *
+ * GitHub release assets in a private repo are fetched through the REST API
+ * (`api.github.com/repos/…/releases/assets/<id>` with
+ * `Accept: application/octet-stream`), which 302s to a signed storage URL.
  */
 object Downloader {
     class HttpError(val code: Int, msg: String) : IOException(msg)
@@ -19,7 +23,8 @@ object Downloader {
     suspend fun download(
         url: String,
         dest: File,
-        token: String?,
+        hfToken: String?,
+        githubToken: String?,
         onProgress: (downloaded: Long, total: Long) -> Unit,
     ) = withContext(Dispatchers.IO) {
         val part = File(dest.path + ".part")
@@ -35,8 +40,13 @@ object Downloader {
                 connectTimeout = 20_000
                 readTimeout = 90_000
                 setRequestProperty("User-Agent", "NajwaMobile/0.1")
-                if (!token.isNullOrBlank() && u.host.endsWith("huggingface.co")) {
-                    setRequestProperty("Authorization", "Bearer $token")
+                if (!hfToken.isNullOrBlank() && u.host.endsWith("huggingface.co")) {
+                    setRequestProperty("Authorization", "Bearer $hfToken")
+                }
+                if (u.host == "api.github.com") {
+                    setRequestProperty("Accept", "application/octet-stream")
+                    setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+                    if (!githubToken.isNullOrBlank()) setRequestProperty("Authorization", "Bearer $githubToken")
                 }
                 if (existing > 0) setRequestProperty("Range", "bytes=$existing-")
             }
@@ -59,8 +69,10 @@ object Downloader {
                 onProgress(dest.length(), dest.length())
                 return@withContext
             }
-            code == 401 || code == 403 -> throw HttpError(code, "Access denied (HTTP $code). Private model? Check the Hugging Face token.")
-            code == 404 -> throw HttpError(code, "Not found (HTTP 404). The model file isn't published yet.")
+            (code == 401 || code == 403 || code == 404) && URL(url).host == "api.github.com" ->
+                throw HttpError(code, "GitHub refused the download (HTTP $code). Check the GitHub token: it needs read access to anwar1808/najwa (Contents: Read).")
+            code == 401 || code == 403 -> throw HttpError(code, "Access denied (HTTP $code). Check the Hugging Face token.")
+            code == 404 -> throw HttpError(code, "Not found (HTTP 404). The model file isn't published at that address.")
             code !in 200..299 -> throw HttpError(code, "HTTP $code")
         }
         val append = code == 206

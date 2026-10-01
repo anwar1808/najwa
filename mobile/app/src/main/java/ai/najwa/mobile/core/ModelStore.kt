@@ -28,10 +28,10 @@ class ModelStore(private val context: Context) {
     fun delete(id: String) { dirFor(id).deleteRecursively() }
 
     /** Download a catalogue entry (or any URL) into place. */
-    suspend fun install(entry: CatalogEntry, token: String?, onProgress: (Long, Long) -> Unit): ModelSpec {
+    suspend fun install(entry: CatalogEntry, hfToken: String?, githubToken: String?, onProgress: (Long, Long) -> Unit): ModelSpec {
         val dir = dirFor(entry.id).apply { mkdirs() }
         val weights = File(dir, "model.bin")
-        Downloader.download(entry.url, weights, token, onProgress)
+        Downloader.download(entry.url, weights, hfToken, githubToken, onProgress)
         val spec = entry.toSpec(weights.length())
         File(dir, "model.json").writeText(spec.toJson())
         return spec

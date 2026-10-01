@@ -3,29 +3,29 @@
     {
       "id": "malaysian-large-v3-turbo-v3-q5_0",
       "name": "Malaysian Whisper large-v3-turbo v3 · q5_0",
-      "url": "https://huggingface.co/anwar1808/najwa-models/resolve/main/malaysian-whisper-large-v3-turbo-v3-q5_0.bin",
+      "url": "https://api.github.com/repos/anwar1808/najwa/releases/assets/603695582",
       "language": "ms",
       "sizeMB": 574,
-      "requiresToken": true,
-      "notes": "Mesolitica fine-tune (Malay/Manglish/Mandarin/Tamil). Default candidate."
+      "notes": "Mesolitica fine-tune (Malay/Manglish/Mandarin/Tamil). Default candidate.",
+      "auth": "github"
     },
     {
       "id": "malaysian-large-v3-turbo-v3-q8_0",
       "name": "Malaysian Whisper large-v3-turbo v3 · q8_0",
-      "url": "https://huggingface.co/anwar1808/najwa-models/resolve/main/malaysian-whisper-large-v3-turbo-v3-q8_0.bin",
+      "url": "https://api.github.com/repos/anwar1808/najwa/releases/assets/603695580",
       "language": "ms",
       "sizeMB": 874,
-      "requiresToken": true,
-      "notes": "Same model, higher precision, ~50% larger and slower."
+      "notes": "Same model, higher precision, ~50% larger and slower.",
+      "auth": "github"
     },
     {
       "id": "malaysian-small-v3-q8_0",
       "name": "Malaysian Whisper small v3 · q8_0",
-      "url": "https://huggingface.co/anwar1808/najwa-models/resolve/main/malaysian-whisper-small-v3-q8_0.bin",
+      "url": "https://api.github.com/repos/anwar1808/najwa/releases/assets/603695583",
       "language": "ms",
       "sizeMB": 264,
-      "requiresToken": true,
-      "notes": "Lighter Mesolitica fine-tune; fallback if turbo is too slow."
+      "notes": "Lighter Mesolitica fine-tune; fallback if turbo is too slow.",
+      "auth": "github"
     },
     {
       "id": "stock-large-v3-turbo-q5_0",
@@ -33,8 +33,8 @@
       "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
       "language": "ms",
       "sizeMB": 574,
-      "requiresToken": false,
-      "notes": "Control: stock multilingual turbo with language forced to Malay (the Pensieve recipe)."
+      "notes": "Control: stock multilingual turbo with language forced to Malay (the Pensieve recipe).",
+      "auth": "none"
     },
     {
       "id": "stock-small-q5_1",
@@ -42,8 +42,8 @@
       "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
       "language": "ms",
       "sizeMB": 190,
-      "requiresToken": false,
-      "notes": "Control for the small tier."
+      "notes": "Control for the small tier.",
+      "auth": "none"
     },
     {
       "id": "stock-base-en-q5_1",
@@ -51,8 +51,8 @@
       "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin",
       "language": "en",
       "sizeMB": 57,
-      "requiresToken": false,
-      "notes": "Fastest possible English-only reference."
+      "notes": "Fastest possible English-only reference.",
+      "auth": "none"
     }
   ]
 }
