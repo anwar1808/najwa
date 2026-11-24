@@ -24,7 +24,21 @@ compiles and installs as a status-bar app:
 - **On-device ASR via WhisperKit** (`openai_whisper-large-v3-v20240930`),
   VAD-chunked so locked-mode dictations beyond 30s transcribe fully, with
   hallucination guards for non-speech audio
-- On-device transcript cleanup via Apple **Foundation Models**
+- On-device transcript cleanup via Apple **Foundation Models**, with a
+  faithfulness check (v0.3.3, `Cleanup.swift`). The system model is whatever
+  the installed macOS ships: before macOS 27 it reported itself unavailable on
+  this machine, so only the naive tidy (capital letter, full stop) ran; once it
+  became available it answered dictated questions instead of cleaning them.
+  The transcript is now passed as tagged text to edit, and any output that
+  adds words, drops most of what was said, grows, or loses a question mark is
+  discarded in favour of the raw transcript.
+  - Cost, measured on M4 Max / macOS 27.2.1 from a cold process: about 0.3 s
+    for one word, 0.4 to 0.7 s for a sentence, 1.3 s at 60 words, 4.1 s at
+    230 words. It scales with the length of the dictation.
+  - Test without audio: `Najwa --cleantest "some text"` prints what v0.3.2
+    would have typed, what the model returns now, the check's verdict, and the
+    time taken. **Re-run it after any major macOS update.**
+  - **Rollback:** `backups/Najwa_v0.3.2_pre-cleanup-guard.app`; git tag `v0.3.2`.
 - **Personal vocabulary correction** (v0.3.0, `Vocabulary.swift`), shared with
   Pensieve: reads the `global` + `najwa` scopes of
   `~/Annie-Claude/Pensieve/Pensieve/.corrections.json` (re-read whenever the
@@ -43,7 +57,7 @@ compiles and installs as a status-bar app:
     prompt ended the segment and every prompted decode returned "".
   - **Rollback:** menu toggle "Vocabulary correction" off = the pre-v0.3.0
     pipeline; git tag `pre-vocab-correction`; `backups/` holds the last
-    v0.2.0 app bundle; the glossary file has a dated `.bak`.
+    v0.2.0 app bundle (`Najwa_v0.2.0_pre-vocab.app`); the glossary file has a dated `.bak`.
   - Test without audio: `Najwa --vocabtest "some text"`; A/B latency:
     `--selftest clip.aiff [--no-vocab] [-NajwaVocabPrompt YES]`.
 - Text injection at the cursor via CGEvent Unicode synthesis
@@ -51,7 +65,8 @@ compiles and installs as a status-bar app:
   empty — an empty result is never dropped silently
 - In-memory text history with a 6-hour app-uptime TTL, cleared on quit
 - Menu-bar nūn (ن) mark (always white; the HUD is the recording cue)
-- Headless pipeline check: `Najwa --selftest /path/to/audio.wav`
+- Headless checks: `Najwa --selftest /path/to/audio.wav` (ASR + vocabulary;
+  does not run cleanup), `--vocabtest "text"`, `--cleantest "text"`
 
 **Phase 3 — faster ASR (later).** Try the Parakeet CoreML port as a
 lower-latency engine. The app depends only on the `Transcriber` protocol,
@@ -81,7 +96,7 @@ the network.
 
 ## Build & run
 
-Requirements: Apple Silicon, macOS 26 (Tahoe), Xcode 26.
+Requirements: Apple Silicon, macOS 26 or later (built for 26, running on 27.2.1), Xcode 26.
 
 ```sh
 scripts/make_app.sh release   # → ./Najwa.app, installed to /Applications/Najwa.app
@@ -119,25 +134,25 @@ hands-free (double-tap again to stop).
 
 ```
 Sources/Najwa/
-  main.swift              app entry (status-bar agent, --selftest dispatch)
+  main.swift              app entry (status-bar agent; --selftest / --vocabtest / --cleantest dispatch)
   AppDelegate.swift       menu bar, nūn glyph, wiring
   HotkeyMonitor.swift     fn via CGEventTap + two-mode state machine
   AudioCapture.swift      in-memory capture, gain normalisation, levels
   Transcriber.swift       ASR protocol (engine is a drop-in)
   WhisperKitTranscriber.swift  WhisperKit large-v3 ASR + 16kHz resampler
-  Cleanup.swift           Foundation Models transcript polish
+  Cleanup.swift           Foundation Models transcript polish + faithfulness check
   Vocabulary.swift        shared glossary: replacements, sound-alike, Whisper prompt
   TextInjector.swift      CGEvent Unicode injection at cursor
   HistoryStore.swift      in-memory 6h-TTL text history
   HUDPanel.swift          floating waveform HUD
   Permissions.swift       Accessibility + Microphone gates
-  SelfTest.swift          headless ASR pipeline verification
+  SelfTest.swift          headless checks: ASR pipeline, vocabulary pass, cleanup pass
   DictationController.swift  orchestration
 ```
 
 ## Mobile stream
 
-The Android counterpart (floating bubble → on-device Whisper → clipboard; Malay + English) lives in [`mobile/`](mobile/README.md). Benchmark build v0.1.1 released 1 Oct 2026 (tags `mobile-v*`, models on release `mobile-models-v1`). The macOS app is unaffected.
+The Android counterpart (on-device Whisper → clipboard; Malay + English; the floating bubble is planned, not built) lives in [`mobile/`](mobile/README.md). Latest benchmark build v0.2.1, 1 Oct 2026 (tags `mobile-v*`, models on release `mobile-models-v1`). The macOS app is unaffected.
 
 ## Privacy
 

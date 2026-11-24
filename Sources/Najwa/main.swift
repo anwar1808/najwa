@@ -6,6 +6,7 @@ import AppKit
 // Headless self-test: `Najwa --selftest <audiofile>` verifies the ASR pipeline.
 // Add `--no-vocab` to run it with vocabulary correction off (A/B latency).
 // `Najwa --vocabtest "some text"` runs only the post-decode correction pass.
+// `Najwa --cleantest "some text"` runs only the LLM cleanup pass and its check.
 let args = CommandLine.arguments
 if args.contains("--no-vocab") {
     // Process-local override: does not touch the saved preference.
@@ -13,6 +14,10 @@ if args.contains("--no-vocab") {
 }
 if let i = args.firstIndex(of: "--vocabtest"), i + 1 < args.count {
     SelfTest.vocabOnly(text: args[i + 1])
+    exit(0)
+}
+if let i = args.firstIndex(of: "--cleantest"), i + 1 < args.count {
+    SelfTest.cleanupOnly(text: args[i + 1])
     exit(0)
 }
 if let i = args.firstIndex(of: "--selftest"), i + 1 < args.count {

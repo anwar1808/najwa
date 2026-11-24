@@ -50,6 +50,29 @@ enum SelfTest {
         print("VOCABTEST: echo = \(v.isPromptEcho(text))")
     }
 
+    /// Runs only the cleanup pass on a string, no ASR, no mic: what v0.3.2
+    /// would have typed, what the model returns now, whether the faithfulness
+    /// check accepts it, and what Najwa would type.
+    static func cleanupOnly(text: String) {
+        let sem = DispatchSemaphore(value: 0)
+        Task {
+            let c = Cleanup()
+            let before = await c.legacyPolish(text)
+            let t0 = ProcessInfo.processInfo.systemUptime
+            let r = await c.polishDetailed(text)
+            let ms = (ProcessInfo.processInfo.systemUptime - t0) * 1000
+            print("CLEANTEST: in      = \"\(text)\"")
+            print("CLEANTEST: v0.3.2  = \"\(before)\"")
+            print("CLEANTEST: check on v0.3.2 output = \(Cleanup.unfaithfulReason(raw: text, cleaned: before).map { "REJECTED, \($0)" } ?? "passes")")
+            print("CLEANTEST: model   = \(r.modelOutput.map { "\"\($0)\"" } ?? "(none)")")
+            print("CLEANTEST: outcome = \(r.outcome)")
+            print("CLEANTEST: typed   = \"\(r.text)\"")
+            print(String(format: "CLEANTEST: cleanup = %.0fms", ms))
+            sem.signal()
+        }
+        sem.wait()
+    }
+
     private static func loadFloats(_ url: URL) -> ([Float], Double)? {
         guard let file = try? AVAudioFile(forReading: url) else { return nil }
         let fmt = file.processingFormat

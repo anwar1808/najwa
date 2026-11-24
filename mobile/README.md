@@ -5,7 +5,7 @@ nothing leaves the phone. Different shape: a floating bubble you hold to dictate
 with the result copied to the clipboard for pasting into any app. It never reads
 the app in use.
 
-Status: **v0.2.0 benchmark build** (1 Oct 2026) — model foundation + Dictate/Models
+Status: **v0.2.1 benchmark build** (1 Oct 2026) — model foundation + Dictate/Models
 screens, Malaysian models downloadable, Mac-style visuals (wave while holding,
 breathing ن while transcribing), Stop button, native build with dotprod; no
 bubble or background service yet (that's step 2/3 below). The macOS app in the
@@ -115,6 +115,9 @@ every test APK shows its results on screen with a "copy results" button.
 Malay/English code-switching rules out Parakeet (EN/EU) and Moonshine (EN).
 Pensieve precedent: force Whisper `language = "ms"` for mixed audio — Malay
 stays Malay, English stays English; `en`/`auto` half-translates the Malay.
+That held for large models only: on the phone, forced `ms` made the stock
+small models translate English into Malay, so since v0.2.1 the language
+defaults to `auto`.
 
 - Engine: **whisper.cpp** (one adapter covers every Whisper-family model).
 - Default candidate: **mesolitica/Malaysian-whisper-large-v3-turbo-v3** (0.8B,
